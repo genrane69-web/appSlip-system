@@ -1,67 +1,85 @@
 import streamlit as st
 import requests
+import json
+import os
+from datetime import datetime
 
 # ตั้งค่าหน้าตาเว็บ
 st.set_page_config(
-    page_title="AppCentralWeb - Verification", 
+    page_title="AppCentralWeb - Slip Verification", 
     page_icon="💎", 
     layout="centered"
 )
 
-# ตกแต่ง CSS ให้ดูเรียบหรู (Luxury Dark Gold) แบบไม่สร้างกล่องทับซ้อน
+# ----------------------------------------------------
+# 1. อ่านข้อมูลผู้ใช้จากฐานข้อมูล (tenants.json)
+# ----------------------------------------------------
+DB_FILE = "tenants.json"
+
+def load_tenants():
+    if not os.path.exists(DB_FILE):
+        return {}
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
+
+def save_tenants(data):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# ----------------------------------------------------
+# 2. ตกแต่งสไตล์ Luxury Dark Gold (เรียบหรูดูแพง)
+# ----------------------------------------------------
 custom_css = """
 <style>
-    /* ซ่อน Header และ Footer ดั้งเดิม */
+    /* ซ่อน Header/Footer ของ Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     
     /* พื้นหลังโทนเข้ม */
     .stApp {
         background-color: #0F1115;
         color: #E2E8F0;
-        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    /* โลโก้และแบรนด์ AppCentralWeb */
+    /* โลโก้แบรนด์ AppCentralWeb */
     .brand-header {
         text-align: center;
+        padding-top: 10px;
         padding-bottom: 5px;
     }
     .brand-title {
-        font-size: 28px;
-        font-weight: 700;
+        font-size: 30px;
+        font-weight: 800;
         background: linear-gradient(90deg, #D4AF37, #FFF5C0, #AA7C11);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        letter-spacing: 1.5px;
+        letter-spacing: 2px;
         margin-bottom: 4px;
         text-transform: uppercase;
     }
     .brand-subtitle {
-        font-size: 12px;
+        font-size: 11px;
         color: #8A94A6;
-        letter-spacing: 1px;
+        letter-spacing: 1.5px;
     }
 
-    /* เส้นแบ่งสีทองบางๆ */
+    /* เส้นแบ่งสีทอง */
     .gold-divider {
         height: 1px;
         background: linear-gradient(90deg, transparent, #D4AF37, transparent);
-        margin: 20px 0;
+        margin: 20px 0 25px 0;
     }
 
-    /* แต่งสไตล์กล่อง Expander และกล่องอัปโหลดไฟล์ */
-    .stExpander {
-        border: 1px solid #2D323E !important;
-        border-radius: 12px !important;
-        background-color: #181B20 !important;
-        margin-bottom: 20px !important;
-    }
-
+    /* ปรับแต่งช่องอัปโหลดไฟล์ */
     [data-testid="stFileUploader"] {
         border: 1px dashed #D4AF37 !important;
         border-radius: 12px !important;
-        padding: 10px !important;
+        padding: 12px !important;
         background-color: #181B20 !important;
     }
 
@@ -69,7 +87,7 @@ custom_css = """
     .result-box {
         background-color: #1A1D24;
         border-left: 3px solid #D4AF37;
-        padding: 16px;
+        padding: 18px;
         border-radius: 8px;
         margin-top: 15px;
     }
@@ -77,60 +95,100 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# แสดงหัวแบรนด์ AppCentralWeb
+# ----------------------------------------------------
+# 3. ส่วนหัวแบรนด์ AppCentralWeb
+# ----------------------------------------------------
 st.markdown("""
 <div class="brand-header">
     <div class="brand-title">AppCentralWeb</div>
-    <div class="brand-subtitle">AUTOMATED SLIP VERIFICATION SYSTEM</div>
+    <div class="brand-subtitle">AUTOMATED SLIP VERIFICATION SERVICE</div>
 </div>
 <div class="gold-divider"></div>
 """, unsafe_allow_html=True)
 
 BRANCH_ID = "SLIPOK0BYYZJR"
 
-# ระบบดึง API Key (ถ้าใส่ไว้ใน Secrets จะข้ามส่วนนี้ไป)
+# ดึง Master API Key ของ SlipOK
 if "SLIPOK_SECRET_KEY" in st.secrets:
     SLIPOK_API_KEY = st.secrets["SLIPOK_SECRET_KEY"]
 else:
-    with st.expander("🔑 ตั้งค่า API Key"):
-        SLIPOK_API_KEY = st.text_input("กรอก Secret Key (SlipOK):", type="password")
+    with st.expander("🔑 ตั้งค่า Master API Key (ระบบ)"):
+        SLIPOK_API_KEY = st.text_input("กรอก Secret Key จาก SlipOK:", type="password")
 
-# ส่วนอัปโหลดสลิป
+# ----------------------------------------------------
+# 4. ฟอร์มการใช้งานของลูกค้า
+# ----------------------------------------------------
 st.subheader("🧾 ตรวจสอบสลิปโอนเงิน")
-uploaded_file = st.file_uploader("อัปโหลดภาพสลิป (PNG, JPG)", type=["jpg", "png", "jpeg"])
+
+tenant_key = st.text_input("🔑 กรอก ACW License Key ของคุณ:", type="password", placeholder="เช่น ACW-XXXXXX")
+uploaded_file = st.file_uploader("อัปโหลดภาพสลิปโอนเงิน (PNG, JPG)", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    st.image(uploaded_file, caption="สลิปที่ต้องการตรวจสอบ", width=250)
+    st.image(uploaded_file, caption="สลิปที่ต้องการตรวจสอบ", width=240)
     
     if st.button("✨ ตรวจสอบรายการนี้", use_container_width=True):
-        if not SLIPOK_API_KEY:
-            st.error("⚠️ กรุณาตั้งค่า Secret Key ก่อนใช้งาน")
+        tenants = load_tenants()
+        
+        # ตรวจสอบความถูกต้องของสิทธิ์การใช้งาน
+        if not tenant_key:
+            st.error("⚠️ กรุณากรอก ACW License Key ก่อนทำการตรวจสอบ")
+        elif tenant_key not in tenants:
+            st.error("❌ Key ไม่ถูกต้อง หรือไม่มีสิทธิ์ใช้งานในระบบ")
+        elif not SLIPOK_API_KEY:
+            st.error("⚠️ ระบบหลักยังไม่ได้ตั้งค่า Master Key ของ SlipOK")
         else:
-            with st.spinner("กำลังเชื่อมต่อระบบธนาคาร..."):
-                try:
-                    url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
-                    headers = {"x-authorization": SLIPOK_API_KEY}
-                    files = {"files": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+            tenant = tenants[tenant_key]
+            # รองรับทั้งโครงสร้างแบบเก่าและใหม่
+            slip_info = tenant.get("services", {}).get("slip", {}) if "services" in tenant else tenant
+            
+            is_active = slip_info.get("active", True)
+            expire_date = slip_info.get("expire_date", "2000-01-01")
+            used_quota = slip_info.get("used_quota", 0)
+            total_quota = slip_info.get("total_quota", 0)
+            
+            today_str = datetime.now().strftime("%Y-%m-%d")
 
-                    response = requests.post(url, headers=headers, files=files)
-                    result = response.json()
+            if not is_active:
+                st.error("❌ บัญชีของคุณถูกระงับ หรือยังไม่ได้เปิดใช้บริการสลิป")
+            elif today_str > expire_date:
+                st.error("❌ สิทธิ์การใช้งานของคุณหมดอายุแล้ว กรุณาติดต่อผู้ให้บริการเพื่อต่ออายุ")
+            elif used_quota >= total_quota:
+                st.error("❌ จำนวนโควต้าสลิปของคุณหมดแล้ว กรุณาอัปเกรดแพ็กเกจ")
+            else:
+                # ส่งไฟล์ไปเช็กกับธนาคารผ่าน SlipOK
+                with st.spinner("กำลังเชื่อมต่อระบบธนาคาร..."):
+                    try:
+                        url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
+                        headers = {"x-authorization": SLIPOK_API_KEY}
+                        files = {"files": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
 
-                    if response.status_code == 200 and result.get("success"):
-                        data = result.get("data", {})
-                        
-                        st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
-                        
-                        st.markdown(f"""
-                        <div class="result-box">
-                            <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
-                            <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
-                            <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
-                            <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
-                            <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
-                            <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
-                except Exception as e:
-                    st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
+                        response = requests.post(url, headers=headers, files=files)
+                        result = response.json()
+
+                        if response.status_code == 200 and result.get("success"):
+                            data = result.get("data", {})
+                            
+                            # หักโควต้าออก 1 ครั้ง
+                            if "services" in tenant:
+                                tenant["services"]["slip"]["used_quota"] += 1
+                            else:
+                                tenant["used_quota"] += 1
+                            save_tenants(tenants)
+                            
+                            st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
+                            st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
+                            
+                            st.markdown(f"""
+                            <div class="result-box">
+                                <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
+                                <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
+                                <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
+                                <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
+                                <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
+                                <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
+                    except Exception as e:
+                        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
