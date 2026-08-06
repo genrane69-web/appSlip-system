@@ -34,6 +34,25 @@ def save_tenants(data):
 # ----------------------------------------------------
 custom_css = """
 <style>
+custom_css = """
+<style>
+    /* ซ่อน Header, Footer และ Badge มุมขวาล่าง */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    [data-testid="stToolbar"] {display: none !important;}
+    div[class*="viewerBadge"] {display: none !important;}
+    div[class*="stDecoration"] {display: none !important;}
+    
+    /* โค้ดตกแต่งเดิม... */
+    .stApp {
+        background-color: #0F1115;
+        color: #E2E8F0;
+        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+...
+"""
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
