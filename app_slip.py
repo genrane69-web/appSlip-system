@@ -30,19 +30,27 @@ def save_tenants(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 # ----------------------------------------------------
-# 2. ตกแต่งสไตล์ Luxury Dark Gold + ซ่อนปุ่ม Streamlit ทุกจุด
+# 2. ตกแต่งสไตล์ Luxury Dark Gold + ซ่อน Badge มุมขวาล่างแบบเด็ดขาด
 # ----------------------------------------------------
 custom_css = """
 <style>
-    /* ซ่อน Header, Footer, Toolbar และ Badge มุมขวาล่างทั้งหมด */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* ซ่อน Header, Footer, Toolbar และ Badge ของ Streamlit ทุกจุด */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important; display: none !important;}
+    header {visibility: hidden !important; display: none !important;}
+    
     [data-testid="stToolbar"] {display: none !important;}
     [data-testid="stDecoration"] {display: none !important;}
     [data-testid="stHeader"] {display: none !important;}
+    [data-testid="stFooter"] {display: none !important;}
+    [data-testid="stStatusWidget"] {display: none !important;}
+    
+    /* ล็อกซ่อนปุ่มโปรไฟล์และมงกุฎสีแดงมุมขวาล่าง */
     div[class*="viewerBadge"] {display: none !important;}
     div[class*="stAppDeployButton"] {display: none !important;}
+    a[href*="streamlit.io"] {display: none !important;}
+    a[href*="share.streamlit.io"] {display: none !important;}
+    iframe[title*="Streamlit"] {display: none !important;}
     
     /* พื้นหลังโทนเข้ม */
     .stApp {
@@ -117,7 +125,7 @@ BRANCH_ID = "SLIPOK0BYYZJR"
 SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "ใส่_SECRET_KEY_SLIPOK_ตรงนี้_ถ้าไม่ได้ใช้_SECRETS")
 
 # ----------------------------------------------------
-# 4. ฟอร์มการใช้งานของลูกค้า (ช่องกรอก Key เดียว)
+# 4. ฟอร์มการใช้งานของลูกค้า
 # ----------------------------------------------------
 st.subheader("🧾 ตรวจสอบสลิปโอนเงิน")
 
