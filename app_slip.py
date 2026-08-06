@@ -30,21 +30,28 @@ def save_tenants(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 # ----------------------------------------------------
-# 2. ตกแต่งสไตล์ Luxury Dark Gold
+# 2. ตกแต่งสไตล์ Luxury Dark Gold + ซ่อนปุ่ม Streamlit ทุกจุด
 # ----------------------------------------------------
 custom_css = """
 <style>
-
+    /* ซ่อน Header, Footer, Toolbar และ Badge มุมขวาล่างทั้งหมด */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    [data-testid="stHeader"] {display: none !important;}
+    div[class*="viewerBadge"] {display: none !important;}
+    div[class*="stAppDeployButton"] {display: none !important;}
     
+    /* พื้นหลังโทนเข้ม */
     .stApp {
         background-color: #0F1115;
         color: #E2E8F0;
         font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
+    /* โลโก้แบรนด์ AppCentralWeb */
     .brand-header {
         text-align: center;
         padding-top: 15px;
@@ -66,12 +73,14 @@ custom_css = """
         letter-spacing: 1.5px;
     }
 
+    /* เส้นแบ่งสีทอง */
     .gold-divider {
         height: 1px;
         background: linear-gradient(90deg, transparent, #D4AF37, transparent);
         margin: 20px 0 25px 0;
     }
 
+    /* ปรับแต่งช่องอัปโหลดไฟล์ */
     [data-testid="stFileUploader"] {
         border: 1px dashed #D4AF37 !important;
         border-radius: 12px !important;
@@ -79,6 +88,7 @@ custom_css = """
         background-color: #181B20 !important;
     }
 
+    /* กล่องแสดงผลลัพธ์ */
     .result-box {
         background-color: #1A1D24;
         border-left: 3px solid #D4AF37;
@@ -103,11 +113,11 @@ st.markdown("""
 
 BRANCH_ID = "SLIPOK0BYYZJR"
 
-# กำหนด Master API Key ของ SlipOK ในเบื้องหลัง (ดึงจาก Secrets หรือใส่รหัสตรงนี้)
+# ดึง Master Secret Key จาก Secrets หรือใส่รหัสโดยตรง
 SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "ใส่_SECRET_KEY_SLIPOK_ตรงนี้_ถ้าไม่ได้ใช้_SECRETS")
 
 # ----------------------------------------------------
-# 4. ฟอร์มการใช้งานของลูกค้า (เหลือช่องกรอก Key เดียว)
+# 4. ฟอร์มการใช้งานของลูกค้า (ช่องกรอก Key เดียว)
 # ----------------------------------------------------
 st.subheader("🧾 ตรวจสอบสลิปโอนเงิน")
 
@@ -127,7 +137,6 @@ if uploaded_file is not None:
         else:
             tenant = tenants[tenant_key]
             
-            # ดึงข้อมูลการใช้งาน
             slip_info = tenant.get("services", {}).get("slip", {}) if "services" in tenant else tenant
             
             is_active = slip_info.get("active", True)
@@ -156,7 +165,6 @@ if uploaded_file is not None:
                         if response.status_code == 200 and result.get("success"):
                             data = result.get("data", {})
                             
-                            # บันทึกตัดโควต้า
                             if "services" in tenant:
                                 tenant["services"]["slip"]["used_quota"] += 1
                             else:
