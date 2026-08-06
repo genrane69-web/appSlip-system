@@ -122,7 +122,8 @@ st.markdown("""
 BRANCH_ID = "SLIPOK0BYYZJR"
 
 # ดึง Master Secret Key จาก Secrets หรือใส่รหัสโดยตรง
-SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "ใส่_SECRET_KEY_SLIPOK_ตรงนี้_ถ้าไม่ได้ใช้_SECRETS")
+BRANCH_ID = "SLIPOK0BYYZJR"
+SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
 
 # ----------------------------------------------------
 # 4. ฟอร์มการใช้งานของลูกค้า
