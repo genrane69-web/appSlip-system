@@ -35,7 +35,6 @@ def save_tenants(data):
 custom_css = """
 <style>
 custom_css = """
-<style>
     /* ซ่อน Header, Footer และ Badge มุมขวาล่าง */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
