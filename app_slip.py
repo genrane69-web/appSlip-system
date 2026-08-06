@@ -30,26 +30,23 @@ def save_tenants(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 # ----------------------------------------------------
-# 2. ตกแต่งสไตล์ Luxury Dark Gold (เรียบหรูดูแพง)
+# 2. ตกแต่งสไตล์ Luxury Dark Gold
 # ----------------------------------------------------
 custom_css = """
 <style>
-    /* ซ่อน Header/Footer ของ Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* พื้นหลังโทนเข้ม */
     .stApp {
         background-color: #0F1115;
         color: #E2E8F0;
         font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
-    /* โลโก้แบรนด์ AppCentralWeb */
     .brand-header {
         text-align: center;
-        padding-top: 10px;
+        padding-top: 15px;
         padding-bottom: 5px;
     }
     .brand-title {
@@ -68,14 +65,12 @@ custom_css = """
         letter-spacing: 1.5px;
     }
 
-    /* เส้นแบ่งสีทอง */
     .gold-divider {
         height: 1px;
         background: linear-gradient(90deg, transparent, #D4AF37, transparent);
         margin: 20px 0 25px 0;
     }
 
-    /* ปรับแต่งช่องอัปโหลดไฟล์ */
     [data-testid="stFileUploader"] {
         border: 1px dashed #D4AF37 !important;
         border-radius: 12px !important;
@@ -83,7 +78,6 @@ custom_css = """
         background-color: #181B20 !important;
     }
 
-    /* กล่องแสดงผลลัพธ์ */
     .result-box {
         background-color: #1A1D24;
         border-left: 3px solid #D4AF37;
@@ -108,15 +102,11 @@ st.markdown("""
 
 BRANCH_ID = "SLIPOK0BYYZJR"
 
-# ดึง Master API Key ของ SlipOK
-if "SLIPOK_SECRET_KEY" in st.secrets:
-    SLIPOK_API_KEY = st.secrets["SLIPOK_SECRET_KEY"]
-else:
-    with st.expander("🔑 ตั้งค่า Master API Key (ระบบ)"):
-        SLIPOK_API_KEY = st.text_input("กรอก Secret Key จาก SlipOK:", type="password")
+# กำหนด Master API Key ของ SlipOK ในเบื้องหลัง (ดึงจาก Secrets หรือใส่รหัสตรงนี้)
+SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "ใส่_SECRET_KEY_SLIPOK_ตรงนี้_ถ้าไม่ได้ใช้_SECRETS")
 
 # ----------------------------------------------------
-# 4. ฟอร์มการใช้งานของลูกค้า
+# 4. ฟอร์มการใช้งานของลูกค้า (เหลือช่องกรอก Key เดียว)
 # ----------------------------------------------------
 st.subheader("🧾 ตรวจสอบสลิปโอนเงิน")
 
@@ -129,16 +119,14 @@ if uploaded_file is not None:
     if st.button("✨ ตรวจสอบรายการนี้", use_container_width=True):
         tenants = load_tenants()
         
-        # ตรวจสอบความถูกต้องของสิทธิ์การใช้งาน
         if not tenant_key:
             st.error("⚠️ กรุณากรอก ACW License Key ก่อนทำการตรวจสอบ")
         elif tenant_key not in tenants:
-            st.error("❌ Key ไม่ถูกต้อง หรือไม่มีสิทธิ์ใช้งานในระบบ")
-        elif not SLIPOK_API_KEY:
-            st.error("⚠️ ระบบหลักยังไม่ได้ตั้งค่า Master Key ของ SlipOK")
+            st.error("❌ License Key ไม่ถูกต้อง หรือไม่มีสิทธิ์ใช้งานในระบบ")
         else:
             tenant = tenants[tenant_key]
-            # รองรับทั้งโครงสร้างแบบเก่าและใหม่
+            
+            # ดึงข้อมูลการใช้งาน
             slip_info = tenant.get("services", {}).get("slip", {}) if "services" in tenant else tenant
             
             is_active = slip_info.get("active", True)
@@ -155,7 +143,6 @@ if uploaded_file is not None:
             elif used_quota >= total_quota:
                 st.error("❌ จำนวนโควต้าสลิปของคุณหมดแล้ว กรุณาอัปเกรดแพ็กเกจ")
             else:
-                # ส่งไฟล์ไปเช็กกับธนาคารผ่าน SlipOK
                 with st.spinner("กำลังเชื่อมต่อระบบธนาคาร..."):
                     try:
                         url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
@@ -168,7 +155,7 @@ if uploaded_file is not None:
                         if response.status_code == 200 and result.get("success"):
                             data = result.get("data", {})
                             
-                            # หักโควต้าออก 1 ครั้ง
+                            # บันทึกตัดโควต้า
                             if "services" in tenant:
                                 tenant["services"]["slip"]["used_quota"] += 1
                             else:
