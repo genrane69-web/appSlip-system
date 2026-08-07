@@ -8,16 +8,37 @@ import os
 
 app = FastAPI(title="AppCentralWeb API Service")
 
-# 1. เชื่อมต่อ Firebase (ใช้ไฟล์ Service Account เดียวกับ Streamlit)
+# ----------------------------------------------------
+# 1. เชื่อมต่อ Firebase จาก Environment Variable (ปลอดภัยที่สุด)
+# ----------------------------------------------------
 if not firebase_admin._apps:
-    # โหลดไฟล์ credentials จาก environment หรือไฟล์ json
-    cred = credentials.Certificate("firebase_credentials.json")
-    firebase_admin.initialize_app(cred)
+    firebase_config = os.getenv("FIREBASE_CREDENTIALS")
+    
+    if firebase_config:
+        # ดึงค่าจาก Environment Variable บน Render
+        cred_dict = json.loads(firebase_config)
+        if "private_key" in cred_dict:
+            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+    elif os.path.exists("firebase_credentials.json"):
+        # สำหรับใช้ทดสอบใน เครื่องคอมพิวเตอร์ตัวเอง (Local)
+        cred = credentials.Certificate("firebase_credentials.json")
+        firebase_admin.initialize_app(cred)
+    else:
+        print("⚠️ ไม่พบกุญแจเชื่อมต่อ Firebase")
 
 db = firestore.client()
 
-BRANCH_ID = "SLIPOK0BYYZJR"
+BRANCH_ID = os.getenv("SLIPOK_BRANCH_ID", "SLIPOK0BYYZJR")
 SLIPOK_API_KEY = os.getenv("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
+
+# ----------------------------------------------------
+# หน้าแรกสำหรับเช็กว่าระบบ API ทำงานปกติหรือไม่ (Health Check)
+# ----------------------------------------------------
+@app.get("/")
+def read_root():
+    return {"status": "online", "message": "AppCentralWeb API Service is running!"}
 
 # ----------------------------------------------------
 # Helper Functions
@@ -117,14 +138,12 @@ async def verify_slip_api(
 @app.post("/api/v1/line-webhook/{tenant_key}")
 async def line_webhook(tenant_key: str, body: dict):
     """
-    นำ URL นี้ไปใส่ใน LINE Developers Webhook URL ของร้านค้าลูกค้า:
-    https://your-api-domain.com/api/v1/line-webhook/ACW-XXXXXX
+    นำ URL นี้ไปใส่ใน LINE Developers Webhook URL ของร้านค้าลูกค้า
     """
     events = body.get("events", [])
     for event in events:
         if event.get("type") == "message" and event.get("message", {}).get("type") == "image":
-            # รับภาพสลิปจาก LINE OA -> ดึงภาพ -> ส่งสแกน -> ตอบกลับข้อความหาลูกค้า
             reply_token = event.get("replyToken")
-            # Logic ดึงรูปจาก LINE Content API และตรวจสอบสลิป...
+            # สามารถต่อยอด Logic อ่านรูปจาก LINE Content API ในอนาคตได้ที่นี่
             
     return {"status": "ok"}
