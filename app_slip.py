@@ -193,11 +193,13 @@ if uploaded_file is not None:
                         except Exception as e:
                             st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
 
+st.markdown("<br><br>", unsafe_allow_html=True)
+
 # ====================================================
-# 5. ฝั่งผู้ดูแลระบบ (Admin - ซ่อนไว้ใน Sidebar ซ้ายมือ)
+# 5. ฝั่งผู้ดูแลระบบ (Admin - ซ่อนไว้ล่างสุดของหน้า)
 # ====================================================
-with st.sidebar:
-    st.subheader("🛡️ Admin")
+with st.expander("🛡️ Admin Panel"):
+    st.subheader("🛡️ ระบบจัดการ (Admin)")
     
     admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
     
