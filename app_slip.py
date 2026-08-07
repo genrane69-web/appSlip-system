@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta
 
 # ====================================================
-# 0. ตั้งค่าเชื่อมต่อ Firebase Firestore
+# 0. ตั้งค่าเชื่อมต่อ Firebase Firestore (ตามโค้ดเดิม)
 # ====================================================
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -21,9 +21,9 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# ----------------------------------------------------
+# ====================================================
 # 1. ตั้งค่าหน้าตาเว็บและ CSS โทน Luxury Dark Gold
-# ----------------------------------------------------
+# ====================================================
 st.set_page_config(
     page_title="AppCentralWeb - Service Platform", 
     page_icon="💎", 
@@ -32,7 +32,6 @@ st.set_page_config(
 
 custom_css = """
 <style>
-    /* แต่งสไตล์ Radio Button ให้เหมือนปุ่มสลับเมนูหรูหรา ซ้อนบน-ล่าง */
     [data-testid="stRadioButton"] > div {
         display: flex;
         flex-direction: column;
@@ -108,9 +107,9 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# ----------------------------------------------------
-# 2. อ่าน/บันทึกฐานข้อมูลผ่าน Firebase Firestore
-# ----------------------------------------------------
+# ====================================================
+# 2. ฟังก์ชันฐานข้อมูล Firestore & Utilities
+# ====================================================
 def load_tenants():
     try:
         docs = db.collection("tenants").stream()
@@ -159,7 +158,6 @@ def check_and_log_slip(trans_ref, data, tenant_key, tenant_name):
         return False, None
 
 def send_line_notify(message):
-    """ส่งการแจ้งเตือนไปยัง LINE Notify ของ Admin"""
     token = st.secrets.get("LINE_NOTIFY_TOKEN", "")
     if token:
         try:
@@ -186,9 +184,9 @@ PACKAGES = {
     "pro": {"name": "🥇 Pro Package", "price": 999, "quota": 5000, "days": 30}
 }
 
-# ----------------------------------------------------
-# 3. ตรวจสอบ URL ว่าเรียกหน้า Admin หรือไม่ (?page=admin)
-# ----------------------------------------------------
+# ====================================================
+# 3. ตรวจสอบ URL หน้า Admin (?page=admin)
+# ====================================================
 query_params = st.query_params
 is_admin_page = query_params.get("page") == "admin"
 
@@ -272,23 +270,20 @@ if is_admin_page:
 # หน้าหลักผู้ใช้บริการ (Default Page)
 # ====================================================
 else:
-    # ----------------------------------------------------
-    # เปลี่ยนจาก st.tabs เป็น st.radio ซ้อนแนวตั้ง บน-ล่าง
-    # ----------------------------------------------------
     menu_mode = st.radio(
         "เลือกเมนูที่ต้องการใช้งาน:",
         options=[
-            "💎 สมัครใช้งาน & เลือกแพ็กเกจ (Auto Active)",
+            "💎 สมัครใช้งาน / เติมโควต้า (Auto Active)",
             "🔑 สำหรับสมาชิก (สแกนสลิป / ดูคู่มือ API)"
         ],
         index=0,
-        label_visibility="collapsed"  # ซ่อนหัวข้อคำอธิบายเพื่อความสะอาดตา
+        label_visibility="collapsed"
     )
 
     st.markdown("<div style='margin-bottom: 25px;'></div>", unsafe_allow_html=True)
 
     # ====================================================
-    # 1. ส่วนสมัครสมาชิกและชำระเงินอัตโนมัติ (อยู่ปุ่มบน)
+    # 1. สมัครใช้งาน & ชำระเงินอัตโนมัติ
     # ====================================================
     if "💎 สมัครใช้งาน" in menu_mode:
         st.subheader("🛒 เลือกแพ็กเกจการใช้งาน")
@@ -299,7 +294,7 @@ else:
             <div class="package-card">
                 <h4>🥉 Starter</h4>
                 <h2 style="color: #D4AF37;">฿299</h2>
-                <p>สแกนสลิป <b>500</b> ครั้ง/เดือน</p>
+                <p>สแกนสลิป <b>500</b> ครั้ง</p>
                 <p>อายุใช้งาน 30 วัน</p>
             </div>
             """, unsafe_allow_html=True)
@@ -308,7 +303,7 @@ else:
             <div class="package-card">
                 <h4>🥈 Business</h4>
                 <h2 style="color: #D4AF37;">฿599</h2>
-                <p>สแกนสลิป <b>2,000</b> ครั้ง/เดือน</p>
+                <p>สแกนสลิป <b>2,000</b> ครั้ง</p>
                 <p>อายุใช้งาน 30 วัน</p>
             </div>
             """, unsafe_allow_html=True)
@@ -317,24 +312,39 @@ else:
             <div class="package-card">
                 <h4>🥇 Pro</h4>
                 <h2 style="color: #D4AF37;">฿999</h2>
-                <p>สแกนสลิป <b>5,000</b> ครั้ง/เดือน</p>
+                <p>สแกนสลิป <b>5,000</b> ครั้ง</p>
                 <p>อายุใช้งาน 30 วัน</p>
             </div>
             """, unsafe_allow_html=True)
 
         st.markdown("---")
-        st.markdown("### 📝 กรอกข้อมูลสั่งซื้อ & ชำระเงิน")
+        st.markdown("### 📝 กรอกข้อมูลสั่งซื้อ / เติมโควต้า & ชำระเงิน")
+
+        action_type = st.radio("รูปแบบการทำรายการ:", ["สร้าง Key ใหม่ (ลูกค้าใหม่)", "เติมโควต้า / ต่ออายุ (Key เดิม)"], horizontal=True)
+        
+        target_key = ""
+        client_shop_name = ""
+        
+        if action_type == "สร้าง Key ใหม่ (ลูกค้าใหม่)":
+            client_shop_name = st.text_input("ชื่อร้านค้า / ผู้สมัครใช้งาน:", placeholder="เช่น ร้านค้าดีจริง หรือ นายสมชาย")
+        else:
+            target_key = st.text_input("กรอก Key เดิมของคุณ:", placeholder="เช่น ACW-XXXXXX").strip()
+            if target_key:
+                tenants = load_tenants()
+                if target_key in tenants:
+                    client_shop_name = tenants[target_key].get("name", "ลูกค้าเก่า")
+                    st.success(f"พบข้อมูล Key: **{client_shop_name}**")
+                else:
+                    st.error("❌ ไม่พบ Key นี้ในระบบ")
 
         pkg_choice = st.selectbox(
             "เลือกแพ็กเกจที่ต้องการ:", 
             options=list(PACKAGES.keys()), 
-            format_func=lambda x: f"{PACKAGES[x]['name']} - ฿{PACKAGES[x]['price']} ({PACKAGES[x]['quota']} ครั้ง)"
+            format_func=lambda x: f"{PACKAGES[x]['name']} - ฿{PACKAGES[x]['price']} ({PACKAGES[x]['quota']} ครั้ง / {PACKAGES[x]['days']} วัน)"
         )
         selected_pkg = PACKAGES[pkg_choice]
 
-        client_shop_name = st.text_input("ชื่อร้านค้า / ผู้สมัครใช้งาน:", placeholder="เช่น ร้านค้าดีจริง หรือ นายสมชาย")
-
-        if client_shop_name:
+        if client_shop_name or target_key:
             st.markdown("#### 📱 สแกน QR Code ชำระเงินผ่าน PromptPay")
             qr_url = f"https://promptpay.io/{PROMPTPAY_NO}/{selected_pkg['price']}.png"
             
@@ -346,13 +356,13 @@ else:
                 **รายละเอียดการโอนเงิน:**
                 * **จำนวนเงิน:** ฿{selected_pkg['price']}.00
                 * **PromptPay:** {PROMPTPAY_NO}
-                * **เมื่อโอนเสร็จแล้ว:** อัปโหลดสลิปด้านล่างเพื่อรับ Key ทันที
+                * **เมื่อโอนเสร็จแล้ว:** อัปโหลดสลิปด้านล่างเพื่อรับ/เติม Key ทันที
                 """)
 
             payment_slip = st.file_uploader("อัปโหลดสลิปการโอนเงินเพื่อยืนยัน (PNG, JPG)", type=["jpg", "png", "jpeg"], key="auto_payment_slip")
 
-            if payment_slip and st.button("✨ ยืนยันการชำระเงินและรับ License Key ทันที", use_container_width=True):
-                with st.spinner("กำลังตรวจสอบสลิปและสร้าง License Key..."):
+            if payment_slip and st.button("✨ ยืนยันการชำระเงินและรับ/เติม License Key ทันที", use_container_width=True):
+                with st.spinner("กำลังตรวจสอบสลิปผ่าน SlipOK..."):
                     try:
                         url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
                         headers = {"x-authorization": SLIPOK_API_KEY}
@@ -366,55 +376,67 @@ else:
                             trans_ref = data.get("transRef")
                             paid_amount = float(data.get("amount", 0))
 
-                            # 🛑 1. ตรวจสอบยอดเงินให้ตรงกับแพ็กเกจ
+                            # 1. เช็คยอดเงิน
                             if paid_amount < selected_pkg["price"]:
                                 st.error(f"❌ ยอดเงินในสลิป (฿{paid_amount:.2f}) ไม่ครบตามราคาระบบ (฿{selected_pkg['price']})")
                             else:
-                                # 🛑 2. ตรวจสอบสลิปซ้ำ (Anti-Reuse)
+                                # 2. เช็คสลิปซ้ำ (Anti-Reuse)
                                 is_valid_slip, slip_log = check_and_log_slip(
                                     trans_ref=trans_ref, 
                                     data=data, 
-                                    tenant_key="AUTO_PAYMENT", 
+                                    tenant_key=target_key if target_key else "AUTO_PURCHASE", 
                                     tenant_name=client_shop_name
                                 )
 
                                 if not is_valid_slip:
-                                    st.error("❌ สลิปนี้เคยถูกใช้งานอนุมัติไปแล้ว ไม่สามารถใช้ซ้ำได้")
+                                    st.error("❌ สลิปนี้เคยถูกใช้งานไปแล้ว ไม่สามารถใช้ซ้ำได้")
                                 else:
-                                    # ✅ 3. สร้าง Key อัตโนมัติและบันทึกลง Firestore
-                                    generated_key = f"ACW-{secrets.token_hex(4).upper()}"
-                                    exp_date = (datetime.now() + timedelta(days=selected_pkg["days"])).strftime("%Y-%m-%d")
-
-                                    new_tenant_data = {
-                                        "name": client_shop_name,
-                                        "active": True,
-                                        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "services": {
-                                            "slip": {
-                                                "active": True,
-                                                "total_quota": selected_pkg["quota"],
-                                                "used_quota": 0,
-                                                "expire_date": exp_date
+                                    tenants = load_tenants()
+                                    final_key = target_key if action_type == "เติมโควต้า / ต่ออายุ (Key เดิม)" else f"ACW-{secrets.token_hex(4).upper()}"
+                                    
+                                    # คำนวณวันหมดอายุและโควต้า
+                                    new_exp_date = (datetime.now() + timedelta(days=selected_pkg["days"])).strftime("%Y-%m-%d")
+                                    
+                                    if final_key in tenants:
+                                        # กรณีเติมโควต้า Key เดิม
+                                        tenant_data = tenants[final_key]
+                                        curr_quota = tenant_data.get("services", {}).get("slip", {}).get("total_quota", 0)
+                                        new_quota = curr_quota + selected_pkg["quota"]
+                                        tenant_data["services"]["slip"]["total_quota"] = new_quota
+                                        tenant_data["services"]["slip"]["expire_date"] = new_exp_date
+                                        tenant_data["services"]["slip"]["active"] = True
+                                    else:
+                                        # กรณีสร้าง Key ใหม่
+                                        tenant_data = {
+                                            "name": client_shop_name,
+                                            "active": True,
+                                            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                            "services": {
+                                                "slip": {
+                                                    "active": True,
+                                                    "total_quota": selected_pkg["quota"],
+                                                    "used_quota": 0,
+                                                    "expire_date": new_exp_date
+                                                }
                                             }
                                         }
-                                    }
-                                    save_single_tenant(generated_key, new_tenant_data)
 
-                                    # 📩 4. แจ้งเตือนแอดมินผ่าน LINE Notify
-                                    notify_msg = f"\n🎉 มีการสมัครใช้งานใหม่!\n👤 ร้าน: {client_shop_name}\n📦 แพ็กเกจ: {selected_pkg['name']} (฿{paid_amount})\n🔑 Key: {generated_key}\n📅 หมดอายุ: {exp_date}"
+                                    save_single_tenant(final_key, tenant_data)
+
+                                    # แจ้งเตือน LINE Notify
+                                    notify_msg = f"\n🎉 รายการทำรายการสำเร็จ!\n👤 ร้าน: {client_shop_name}\n📦 แพ็กเกจ: {selected_pkg['name']} (฿{paid_amount})\n🔑 Key: {final_key}\n📅 หมดอายุ: {new_exp_date}"
                                     send_line_notify(notify_msg)
 
-                                    # 🎉 5. แสดง Key บนหน้าจอให้ลูกค้าทันที
+                                    # แสดงผล
                                     st.balloons()
-                                    st.success("🎉 ชำระเงินสำเร็จ! ระบบอนุมัติ License Key ให้คุณแล้ว")
+                                    st.success("🎉 อนุมัติรายการเรียบร้อยแล้ว!")
                                     st.markdown(f"""
                                     <div class="result-box">
                                         <h3 style="color: #D4AF37; margin-top:0;">🔑 ACW License Key ของคุณ:</h3>
-                                        <h1 style="color: #4ADE80; font-family: monospace;">{generated_key}</h1>
+                                        <h1 style="color: #4ADE80; font-family: monospace;">{final_key}</h1>
                                         <p><b>ชื่อร้านค้า:</b> {client_shop_name}</p>
-                                        <p><b>แพ็กเกจ:</b> {selected_pkg['name']} ({selected_pkg['quota']} ครั้ง)</p>
-                                        <p><b>วันหมดอายุ:</b> {exp_date}</p>
-                                        <p style="color: #E2E8F0; font-size: 13px;">⚠️ <i>กรุณาคัดลอก Key นี้ไว้ เพื่อนำไปใช้สแกนสลิปหรือเชื่อมต่อ API ในระบบของคุณ</i></p>
+                                        <p><b>แพ็กเกจ:</b> {selected_pkg['name']} (+{selected_pkg['quota']} ครั้ง)</p>
+                                        <p><b>วันหมดอายุใหม่:</b> {new_exp_date}</p>
                                     </div>
                                     """, unsafe_allow_html=True)
                         else:
@@ -423,7 +445,7 @@ else:
                         st.error(f"เกิดข้อผิดพลาดในระบบ: {e}")
 
     # ====================================================
-    # 2. ส่วนสมาชิกสแกนสลิป / ตรวจสอบสลิป (อยู่ปุ่มล่าง)
+    # 2. ส่วนสมาชิกสแกนสลิป & ดูคู่มือ API/Webhook
     # ====================================================
     else:
         st.subheader("🧾 ตรวจสอบสลิปโอนเงิน (สำหรับสมาชิก)")
@@ -491,7 +513,6 @@ else:
                                                 tenant["used_quota"] += 1
                                             save_single_tenant(tenant_key, tenant)
                                             
-                                            # 📩 ส่งแจ้งเตือนแอดมินผ่าน LINE เมื่อสมาชิกสแกนสลิปสำเร็จ
                                             notify_msg = (
                                                 f"\n🧾 มีการสแกนตรวจสลิปใหม่!"
                                                 f"\n👤 ร้านค้า/สมาชิก: {tenant.get('name', 'N/A')}"
@@ -524,14 +545,13 @@ else:
 
         st.markdown("---")
 
-        # ----------------------------------------------------
-        # 💡 คู่มือการเชื่อมต่อ API & LINE OA Webhook
-        # ----------------------------------------------------
+        # ====================================================
+        # คู่มือการเชื่อมต่อ API & LINE OA Webhook (นำกลับมาครบถ้วน)
+        # ====================================================
         display_key = tenant_key.strip() if tenant_key else "ACW-XXXXXX"
         with st.expander("📖 คู่มือการเชื่อมต่อ API & LINE OA Webhook (สำหรับนำไปใช้ในระบบของคุณ)"):
             tab_rest, tab_line = st.tabs(["🔌 REST API (สำหรับนักพัฒนา)", "💬 LINE OA Webhook (สำหรับร้านค้า)"])
             
-            # --- TAB 1: REST API ---
             with tab_rest:
                 st.markdown("#### 🚀 สำหรับเชื่อมต่อกับเว็บไซต์ / แอปพลิเคชัน")
                 st.caption("นำ Endpoint และ Header ด้านล่างนี้ไปใช้ยิง Request จากระบบของคุณ")
@@ -547,7 +567,6 @@ else:
   -H "x-license-key: {display_key}" \\
   -F "file=@/path/to/slip.jpg"''', language="bash")
 
-            # --- TAB 2: LINE OA Webhook ---
             with tab_line:
                 st.markdown("#### 💬 สำหรับเชื่อมต่อกับ LINE Official Account (LINE OA)")
                 st.caption("ทำตาม 5 ขั้นตอนนี้เพื่อเปิดใช้งานระบบตรวจสลิปอัตโนมัติใน LINE OA ของคุณ")
