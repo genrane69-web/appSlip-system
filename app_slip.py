@@ -32,6 +32,26 @@ st.set_page_config(
 
 custom_css = """
 <style>
+    /* แต่งสไตล์ Radio Button ให้เหมือนปุ่มสลับเมนูหรูหรา ซ้อนบน-ล่าง */
+    [data-testid="stRadioButton"] > div {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    [data-testid="stRadioButton"] label {
+        background-color: #1A1D24;
+        border: 1px solid #D4AF37;
+        border-radius: 10px;
+        padding: 14px 18px;
+        width: 100%;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    [data-testid="stRadioButton"] label:hover {
+        background-color: #252932;
+        border-color: #FFF5C0;
+    }
+
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important; display: none !important;}
     header {visibility: hidden !important; display: none !important;}
