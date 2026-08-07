@@ -369,55 +369,6 @@ else:
 
     tenant_key = st.text_input("🔑 กรอก ACW License Key ของคุณ:", type="password", placeholder="เช่น ACW-XXXXXX", key="client_key_input")
 
-    # ----------------------------------------------------
-    # 💡 ปุ่มคู่มือ API & Webhook สำหรับลูกค้า
-    # ----------------------------------------------------
-    if tenant_key:
-        display_key = tenant_key.strip()
-    else:
-        display_key = "ACW-XXXXXX"
-
-    with st.expander("📖 คู่มือการเชื่อมต่อ API & LINE OA Webhook (สำหรับนำไปใช้ในระบบของคุณ)"):
-        tab_rest, tab_line = st.tabs(["🔌 REST API (สำหรับนักพัฒนา)", "💬 LINE OA Webhook (สำหรับร้านค้า)"])
-        
-                # --- TAB 1: REST API ---
-        with tab_rest:
-            st.markdown("#### 🚀 สำหรับเชื่อมต่อกับเว็บไซต์ / แอปพลิเคชัน")
-            st.caption("นำ Endpoint และ Header ด้านล่างนี้ไปใช้ยิง Request จากระบบของคุณ")
-            
-            st.markdown("**1. API Endpoint:**")
-            st.code("POST https://acw-api.onrender.com/api/v1/verify-slip", language="text")
-            
-            st.markdown("**2. HTTP Headers:**")
-            st.code(f"x-license-key: {display_key}\nContent-Type: multipart/form-data", language="http")
-            
-            st.markdown("**3. ตัวอย่างการส่งคำขอ (cURL):**")
-            st.code(f'''curl -X POST "https://acw-api.onrender.com/api/v1/verify-slip" \\
-  -H "x-license-key: {display_key}" \\
-  -F "file=@/path/to/slip.jpg"''', language="bash")
-
-
-                # --- TAB 2: LINE OA Webhook ---
-        with tab_line:
-            st.markdown("#### 💬 สำหรับเชื่อมต่อกับ LINE Official Account (LINE OA)")
-            st.caption("ทำตาม 5 ขั้นตอนนี้เพื่อเปิดใช้งานระบบตรวจสลิปอัตโนมัติใน LINE OA ของคุณ")
-            
-            webhook_url = f"https://acw-api.onrender.com/api/v1/line-webhook/{display_key}"
-            
-            st.markdown("**📍 Webhook URL ของคุณ (คัดลอกลิงก์นี้):**")
-            st.code(webhook_url, language="text")
-            
-            st.markdown("""
-            **วิธีนำไปใส่ใน LINE Developers:**
-            1. เข้าไปที่เว็บ **[LINE Developers Console](https://developers.line.biz/)** แล้วล็อกอิน
-            2. เลือก **Provider** และคลิกเลือก **Messaging API Channel** ของร้านคุณ
-            3. ไปที่เมนูแท็บ **Messaging API**
-            4. เลื่อนลงมาที่หัวข้อ **Webhook settings** กดปุ่ม **Edit** นำ **Webhook URL** ด้านบนไปวาง แล้วกด **Save**
-            5. กดเปิดสวิตช์ **Use webhook** ให้เป็นสีเขียว
-            """)
-
-    st.markdown("---")
-
     uploaded_file = st.file_uploader("อัปโหลดภาพสลิปโอนเงิน (PNG, JPG)", type=["jpg", "png", "jpeg"], key="slip_file_uploader")
 
     if uploaded_file is not None:
@@ -510,3 +461,51 @@ else:
                                     st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
                             except Exception as e:
                                 st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
+
+    st.markdown("---")
+
+    # ----------------------------------------------------
+    # 💡 ปุ่มคู่มือ API & Webhook สำหรับลูกค้า (ย้ายมาไว้ด้านล่างแล้ว)
+    # ----------------------------------------------------
+    if tenant_key:
+        display_key = tenant_key.strip()
+    else:
+        display_key = "ACW-XXXXXX"
+
+    with st.expander("📖 คู่มือการเชื่อมต่อ API & LINE OA Webhook (สำหรับนำไปใช้ในระบบของคุณ)"):
+        tab_rest, tab_line = st.tabs(["🔌 REST API (สำหรับนักพัฒนา)", "💬 LINE OA Webhook (สำหรับร้านค้า)"])
+        
+        # --- TAB 1: REST API ---
+        with tab_rest:
+            st.markdown("#### 🚀 สำหรับเชื่อมต่อกับเว็บไซต์ / แอปพลิเคชัน")
+            st.caption("นำ Endpoint และ Header ด้านล่างนี้ไปใช้ยิง Request จากระบบของคุณ")
+            
+            st.markdown("**1. API Endpoint:**")
+            st.code("POST https://acw-api.onrender.com/api/v1/verify-slip", language="text")
+            
+            st.markdown("**2. HTTP Headers:**")
+            st.code(f"x-license-key: {display_key}\nContent-Type: multipart/form-data", language="http")
+            
+            st.markdown("**3. ตัวอย่างการส่งคำขอ (cURL):**")
+            st.code(f'''curl -X POST "https://acw-api.onrender.com/api/v1/verify-slip" \\
+  -H "x-license-key: {display_key}" \\
+  -F "file=@/path/to/slip.jpg"''', language="bash")
+
+        # --- TAB 2: LINE OA Webhook ---
+        with tab_line:
+            st.markdown("#### 💬 สำหรับเชื่อมต่อกับ LINE Official Account (LINE OA)")
+            st.caption("ทำตาม 5 ขั้นตอนนี้เพื่อเปิดใช้งานระบบตรวจสลิปอัตโนมัติใน LINE OA ของคุณ")
+            
+            webhook_url = f"https://acw-api.onrender.com/api/v1/line-webhook/{display_key}"
+            
+            st.markdown("**📍 Webhook URL ของคุณ (คัดลอกลิงก์นี้):**")
+            st.code(webhook_url, language="text")
+            
+            st.markdown("""
+            **วิธีนำไปใส่ใน LINE Developers:**
+            1. เข้าไปที่เว็บ **[LINE Developers Console](https://developers.line.biz/)** แล้วล็อกอิน
+            2. เลือก **Provider** และคลิกเลือก **Messaging API Channel** ของร้านคุณ
+            3. ไปที่เมนูแท็บ **Messaging API**
+            4. เลื่อนลงมาที่หัวข้อ **Webhook settings** กดปุ่ม **Edit** นำ **Webhook URL** ด้านบนไปวาง แล้วกด **Save**
+            5. กดเปิดสวิตช์ **Use webhook** ให้เป็นสีเขียว
+            """)
