@@ -94,18 +94,29 @@ st.markdown(custom_css, unsafe_allow_html=True)
 # ----------------------------------------------------
 DB_FILE = "tenants.json"
 
+# ----------------------------------------------------
+# 2. อ่าน/บันทึกฐานข้อมูล (เปลี่ยนเป็น Firebase Firestore)
+# ----------------------------------------------------
+
 def load_tenants():
-    if not os.path.exists(DB_FILE):
+    """ดึงข้อมูลผู้ใช้ทั้งหมดจาก Firestore"""
+    try:
+        docs = db.collection("tenants").stream()
+        tenants = {}
+        for doc in docs:
+            tenants[doc.id] = doc.to_dict()
+        return tenants
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
         return {}
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except:
-            return {}
 
 def save_tenants(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    """บันทึกข้อมูลผู้ใช้ทั้งหมดลง Firestore"""
+    try:
+        for key, tenant_info in data.items():
+            db.collection("tenants").document(key).set(tenant_info)
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}")
 
 BRANCH_ID = "SLIPOK0BYYZJR"
 SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
