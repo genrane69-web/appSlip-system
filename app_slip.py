@@ -150,7 +150,10 @@ if is_admin_page:
     
     admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
     
-    if admin_password == "kunyakronpromsiri01A@":
+# ดึงรหัสผ่านจาก Secrets (หากหาไม่พบจะดึงค่าสำรองมาใช้)
+    CORRECT_ADMIN_PWD = st.secrets.get("ADMIN_PASSWORD", "kunyakronpromsiri01A@")
+
+    if admin_password == CORRECT_ADMIN_PWD:
         st.success("เข้าสู่ระบบ Admin เรียบร้อยแล้ว")
         tenants = load_tenants()
         
