@@ -181,9 +181,9 @@ SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
 PROMPTPAY_NO = st.secrets.get("PROMPTPAY_NO", "0812345678")
 
 PACKAGES = {
-    "starter": {"name": "Starter Package", "price": 299, "quota": 500, "days": 30},
-    "business": {"name": "Business Package", "price": 599, "quota": 2000, "days": 30},
-    "pro": {"name": "Pro Unlimited", "price": 999, "quota": 10000, "days": 30}
+    "starter": {"name": "🥉 Starter Package", "price": 299, "quota": 500, "days": 30},
+    "business": {"name": "🥈 Business Package", "price": 599, "quota": 2000, "days": 30},
+    "pro": {"name": "🥇 Pro Package", "price": 999, "quota": 5000, "days": 30}
 }
 
 # ----------------------------------------------------
