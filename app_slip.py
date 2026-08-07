@@ -397,12 +397,12 @@ else:
   -F "file=@/path/to/slip.jpg"''', language="bash")
 
 
-        # --- TAB 2: LINE OA Webhook ---
+                # --- TAB 2: LINE OA Webhook ---
         with tab_line:
             st.markdown("#### 💬 สำหรับเชื่อมต่อกับ LINE Official Account (LINE OA)")
             st.caption("ทำตาม 5 ขั้นตอนนี้เพื่อเปิดใช้งานระบบตรวจสลิปอัตโนมัติใน LINE OA ของคุณ")
             
-            webhook_url = f"https://your-api-domain.com/api/v1/line-webhook/{display_key}"
+            webhook_url = f"https://acw-api.onrender.com/api/v1/line-webhook/{display_key}"
             
             st.markdown("**📍 Webhook URL ของคุณ (คัดลอกลิงก์นี้):**")
             st.code(webhook_url, language="text")
