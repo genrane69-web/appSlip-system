@@ -217,11 +217,11 @@ with tab_client:
 # TAB 2: ฝั่งผู้ดูแลระบบ (Admin)
 # ====================================================
 with tab_admin:
-    st.subheader("🛡️ ระบบผู้ดูแลระบบ (Admin)")
+    st.subheader("🛡️")
     
     admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
     
-    if admin_password == "admin1234":
+    if admin_password == "kunyakronpromsiri01A@":
         st.success("เข้าสู่ระบบ Admin เรียบร้อยแล้ว")
         tenants = load_tenants()
         
