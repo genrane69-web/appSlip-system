@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File
 import firebase_admin
 from firebase_admin import credentials, firestore
 import requests
@@ -9,32 +9,32 @@ import os
 app = FastAPI(title="AppCentralWeb API Service")
 
 # ----------------------------------------------------
-# 1. เชื่อมต่อ Firebase จาก Environment Variable (ปลอดภัยที่สุด)
+# 1. เชื่อมต่อ Firebase (รองรับการดึงกุญแจแบบปลอดภัย)
 # ----------------------------------------------------
 if not firebase_admin._apps:
     firebase_config = os.getenv("FIREBASE_CREDENTIALS")
-    
     if firebase_config:
-        # ดึงค่าจาก Environment Variable บน Render
-        cred_dict = json.loads(firebase_config)
-        if "private_key" in cred_dict:
-            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
+        try:
+            # ตัดเครื่องหมายอัญประกาศส่วนเกินหากมี
+            firebase_config_clean = firebase_config.strip("'\"")
+            cred_dict = json.loads(firebase_config_clean)
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        except Exception as e:
+            print(f"⚠️ Firebase Initialization Error: {e}")
     elif os.path.exists("firebase_credentials.json"):
-        # สำหรับใช้ทดสอบใน เครื่องคอมพิวเตอร์ตัวเอง (Local)
         cred = credentials.Certificate("firebase_credentials.json")
         firebase_admin.initialize_app(cred)
-    else:
-        print("⚠️ ไม่พบกุญแจเชื่อมต่อ Firebase")
 
-db = firestore.client()
+db = firestore.client() if firebase_admin._apps else None
 
 BRANCH_ID = os.getenv("SLIPOK_BRANCH_ID", "SLIPOK0BYYZJR")
 SLIPOK_API_KEY = os.getenv("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
 
 # ----------------------------------------------------
-# หน้าแรกสำหรับเช็กว่าระบบ API ทำงานปกติหรือไม่ (Health Check)
+# หน้าแรกสำหรับเช็กสถานะเซิร์ฟเวอร์ (GET /)
 # ----------------------------------------------------
 @app.get("/")
 def read_root():
@@ -44,7 +44,9 @@ def read_root():
 # Helper Functions
 # ----------------------------------------------------
 def verify_tenant_key(tenant_key: str):
-    """ตรวจสอบ License Key และเช็กสิทธิ์/โควต้า"""
+    if not db:
+        raise HTTPException(status_code=500, detail="ไม่สามารถเชื่อมต่อฐานข้อมูล Firebase ได้")
+        
     doc_ref = db.collection("tenants").document(tenant_key)
     doc = doc_ref.get()
     
@@ -71,20 +73,15 @@ def verify_tenant_key(tenant_key: str):
     return tenant, slip_info
 
 # ----------------------------------------------------
-# Endpoint 1: REST API สำหรับเว็บไซต์/แอปพลิเคชันของลูกค้า
+# Endpoint 1: REST API สำหรับเว็บไซต์ลูกค้า
 # ----------------------------------------------------
 @app.post("/api/v1/verify-slip")
 async def verify_slip_api(
     x_license_key: str = Header(..., description="ACW License Key ของลูกค้า"),
     file: UploadFile = File(...)
 ):
-    """
-    ลูกค้าส่งไฟล์ภาพสลิปมาพร้อม Header: x-license-key
-    """
-    # 1. ตรวจสอบ Key และโควต้า
     tenant, slip_info = verify_tenant_key(x_license_key)
     
-    # 2. อ่านไฟล์และส่งหา SlipOK API
     file_bytes = await file.read()
     url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
     headers = {"x-authorization": SLIPOK_API_KEY}
@@ -97,12 +94,10 @@ async def verify_slip_api(
         data = result.get("data", {})
         trans_ref = data.get("transRef")
         
-        # 3. เช็ก Anti-Reuse
         slip_ref = db.collection("scanned_slips").document(trans_ref)
         if slip_ref.get().exists:
             return {"success": False, "message": "สลิปนี้ถูกใช้งานไปแล้ว (Anti-Reuse)"}
             
-        # บันทึกสลิป
         slip_ref.set({
             "transRef": trans_ref,
             "tenant_key": x_license_key,
@@ -115,7 +110,6 @@ async def verify_slip_api(
             "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         
-        # 4. ตัดโควต้าใน Firebase
         if "services" in tenant and "slip" in tenant["services"]:
             tenant["services"]["slip"]["used_quota"] += 1
         else:
@@ -133,17 +127,8 @@ async def verify_slip_api(
         return {"success": False, "message": result.get("message", "สลิปไม่ถูกต้อง")}
 
 # ----------------------------------------------------
-# Endpoint 2: Webhook สำหรับ LINE Official Account (LINE OA)
+# Endpoint 2: Webhook สำหรับ LINE OA
 # ----------------------------------------------------
 @app.post("/api/v1/line-webhook/{tenant_key}")
 async def line_webhook(tenant_key: str, body: dict):
-    """
-    นำ URL นี้ไปใส่ใน LINE Developers Webhook URL ของร้านค้าลูกค้า
-    """
-    events = body.get("events", [])
-    for event in events:
-        if event.get("type") == "message" and event.get("message", {}).get("type") == "image":
-            reply_token = event.get("replyToken")
-            # สามารถต่อยอด Logic อ่านรูปจาก LINE Content API ในอนาคตได้ที่นี่
-            
     return {"status": "ok"}
