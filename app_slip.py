@@ -6,13 +6,12 @@ import os
 from datetime import datetime, timedelta
 
 # ====================================================
-# 🔥 [เพิ่มตรงนี้] ตั้งค่าเชื่อมต่อ Firebase Firestore
+# 0. ตั้งค่าเชื่อมต่อ Firebase Firestore
 # ====================================================
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 if not firebase_admin._apps:
-    # ดึงค่าจาก Streamlit Secrets
     key_dict = dict(st.secrets["firebase_service_account"])
     if "private_key" in key_dict:
         key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
@@ -21,7 +20,6 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
-# ====================================================
 
 # ----------------------------------------------------
 # 1. ตั้งค่าหน้าตาเว็บและ CSS โทน Luxury Dark Gold
@@ -90,16 +88,9 @@ custom_css = """
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 2. อ่าน/บันทึกฐานข้อมูล
+# 2. อ่าน/บันทึกฐานข้อมูลผ่าน Firebase Firestore (ปรับแก้แล้ว)
 # ----------------------------------------------------
-DB_FILE = "tenants.json"
-
-# ----------------------------------------------------
-# 2. อ่าน/บันทึกฐานข้อมูล (เปลี่ยนเป็น Firebase Firestore)
-# ----------------------------------------------------
-
 def load_tenants():
-    """ดึงข้อมูลผู้ใช้ทั้งหมดจาก Firestore"""
     try:
         docs = db.collection("tenants").stream()
         tenants = {}
@@ -110,13 +101,19 @@ def load_tenants():
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
         return {}
 
-def save_tenants(data):
-    """บันทึกข้อมูลผู้ใช้ทั้งหมดลง Firestore"""
+def save_single_tenant(key, tenant_info):
+    """บันทึกเฉพาะลูกค้าคนเดียว ป้องกันการบันทึกซ้ำซ้อนเปลืองโควต้า"""
     try:
-        for key, tenant_info in data.items():
-            db.collection("tenants").document(key).set(tenant_info)
+        db.collection("tenants").document(key).set(tenant_info)
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}")
+
+def delete_tenant(key):
+    """ลบข้อมูลออกจาก Firebase Firestore จริง"""
+    try:
+        db.collection("tenants").document(key).delete()
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการลบข้อมูล: {e}")
 
 BRANCH_ID = "SLIPOK0BYYZJR"
 SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
@@ -176,7 +173,7 @@ if is_admin_page:
                     new_key = f"ACW-{secrets.token_hex(4).upper()}"
                     exp_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
                     
-                    tenants[new_key] = {
+                    new_tenant_data = {
                         "name": client_name,
                         "active": True,
                         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -195,7 +192,7 @@ if is_admin_page:
                             }
                         }
                     }
-                    save_tenants(tenants)
+                    save_single_tenant(new_key, new_tenant_data)
                     st.success(f"สร้าง Key สำเร็จเรียบร้อยสำหรับ: **{client_name}**")
                     st.code(new_key, language="text")
                     st.rerun()
@@ -219,18 +216,17 @@ if is_admin_page:
                     with col_m1:
                         if master_active:
                             if st.button("⛔ ระงับสิทธิ์ทุกบริการ", key=f"ban_all_{key}"):
-                                tenants[key]["active"] = False
-                                save_tenants(tenants)
+                                info["active"] = False
+                                save_single_tenant(key, info)
                                 st.rerun()
                         else:
                             if st.button("✅ ปลดระงับทุกบริการ", key=f"unban_all_{key}"):
-                                tenants[key]["active"] = True
-                                save_tenants(tenants)
+                                info["active"] = True
+                                save_single_tenant(key, info)
                                 st.rerun()
                     with col_m2:
                         if st.button("🗑️ ลบบัญชีนี้", key=f"del_master_{key}"):
-                            del tenants[key]
-                            save_tenants(tenants)
+                            delete_tenant(key)  # ✅ เรียกฟังก์ชันลบตรงจาก Firebase
                             st.rerun()
                     
                     st.markdown("#### ⚙️ สถานะบริการในระบบ")
@@ -252,15 +248,15 @@ if is_admin_page:
                         with c3:
                             btn_label = "ปิดบริการนี้" if s_data.get('active') else "เปิดบริการนี้"
                             if st.button(btn_label, key=f"toggle_{key}_{s_id}"):
-                                if "services" not in tenants[key]:
-                                    tenants[key]["services"] = services
+                                if "services" not in info:
+                                    info["services"] = services
                                 
-                                if s_id not in tenants[key]["services"]:
-                                    tenants[key]["services"][s_id] = {"active": True, "total_quota": 500, "used_quota": 0, "expire_date": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")}
+                                if s_id not in info["services"]:
+                                    info["services"][s_id] = {"active": True, "total_quota": 500, "used_quota": 0, "expire_date": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")}
                                 else:
-                                    tenants[key]["services"][s_id]["active"] = not tenants[key]["services"][s_id]["active"]
+                                    info["services"][s_id]["active"] = not info["services"][s_id]["active"]
                                     
-                                save_tenants(tenants)
+                                save_single_tenant(key, info)
                                 st.rerun()
 
                         if s_data.get('active'):
@@ -270,9 +266,9 @@ if is_admin_page:
                                 
                                 col_p1, col_p2 = st.columns(2)
                                 if col_p1.button("รีเซ็ตสถิติ/เซฟโควต้า", key=f"save_q_{key}_{s_id}"):
-                                    tenants[key]["services"][s_id]["total_quota"] = new_q
-                                    tenants[key]["services"][s_id]["used_quota"] = 0
-                                    save_tenants(tenants)
+                                    info["services"][s_id]["total_quota"] = new_q
+                                    info["services"][s_id]["used_quota"] = 0
+                                    save_single_tenant(key, info)
                                     st.success("อัปเดตโควต้าแล้ว")
                                     st.rerun()
                                     
@@ -282,8 +278,8 @@ if is_admin_page:
                                     except:
                                         curr = datetime.now()
                                     base = datetime.now() if curr < datetime.now() else curr
-                                    tenants[key]["services"][s_id]["expire_date"] = (base + timedelta(days=add_d)).strftime("%Y-%m-%d")
-                                    save_tenants(tenants)
+                                    info["services"][s_id]["expire_date"] = (base + timedelta(days=add_d)).strftime("%Y-%m-%d")
+                                    save_single_tenant(key, info)
                                     st.success("ขยายเวลาแล้ว")
                                     st.rerun()
                         st.divider()
@@ -355,10 +351,11 @@ else:
                                     
                                     # หักโควต้าและบันทึกข้อมูล
                                     if is_nested:
-                                        tenants[tenant_key]["services"]["slip"]["used_quota"] += 1
+                                        tenant["services"]["slip"]["used_quota"] += 1
                                     else:
-                                        tenants[tenant_key]["used_quota"] += 1
-                                    save_tenants(tenants)
+                                        tenant["used_quota"] += 1
+                                    
+                                    save_single_tenant(tenant_key, tenant) # ✅ บันทึกเฉพาะผู้ใช้รายนี้
                                     
                                     st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
                                     st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
