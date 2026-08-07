@@ -16,6 +16,12 @@ st.set_page_config(
 
 custom_css = """
 <style>
+
+/* จัดแท็บทั้งหมดให้อยู่กึ่งกลางหน้าจอ */
+div[data-baseweb="tab-list"] {
+    justify-content: center !important;
+}
+
     /* ซ่อนองค์ประกอบส่วนเกินของ Streamlit */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important; display: none !important;}
