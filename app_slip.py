@@ -380,21 +380,22 @@ else:
     with st.expander("📖 คู่มือการเชื่อมต่อ API & LINE OA Webhook (สำหรับนำไปใช้ในระบบของคุณ)"):
         tab_rest, tab_line = st.tabs(["🔌 REST API (สำหรับนักพัฒนา)", "💬 LINE OA Webhook (สำหรับร้านค้า)"])
         
-        # --- TAB 1: REST API ---
+                # --- TAB 1: REST API ---
         with tab_rest:
             st.markdown("#### 🚀 สำหรับเชื่อมต่อกับเว็บไซต์ / แอปพลิเคชัน")
             st.caption("นำ Endpoint และ Header ด้านล่างนี้ไปใช้ยิง Request จากระบบของคุณ")
             
             st.markdown("**1. API Endpoint:**")
-            st.code("POST https://your-api-domain.com/api/v1/verify-slip", language="text")
+            st.code("POST https://acw-api.onrender.com/api/v1/verify-slip", language="text")
             
             st.markdown("**2. HTTP Headers:**")
             st.code(f"x-license-key: {display_key}\nContent-Type: multipart/form-data", language="http")
             
             st.markdown("**3. ตัวอย่างการส่งคำขอ (cURL):**")
-            st.code(f'''curl -X POST "https://your-api-domain.com/api/v1/verify-slip" \\
+            st.code(f'''curl -X POST "https://acw-api.onrender.com/api/v1/verify-slip" \\
   -H "x-license-key: {display_key}" \\
   -F "file=@/path/to/slip.jpg"''', language="bash")
+
 
         # --- TAB 2: LINE OA Webhook ---
         with tab_line:
