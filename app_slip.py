@@ -114,6 +114,47 @@ def delete_tenant(key):
         db.collection("tenants").document(key).delete()
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการลบข้อมูล: {e}")
+        
+def check_and_log_slip(trans_ref, data, tenant_key, tenant_name):
+    """
+    เช็กว่า transRef เคยสแกนหรือยัง (Anti-Reuse)
+    ถ้ายังไม่เคย จะทำการบันทึกประวัติทันที
+    """
+    try:
+        doc_ref = db.collection("scanned_slips").document(trans_ref)
+        doc = doc_ref.get()
+        
+        # ❌ สลิปเคยถูกใช้งานไปแล้ว
+        if doc.exists:
+            return False, doc.to_dict()
+            
+        # ✅ สลิปใหม่ บันทึกประวัติลง Firestore
+        log_data = {
+            "transRef": trans_ref,
+            "tenant_key": tenant_key,
+            "tenant_name": tenant_name,
+            "amount": data.get("amount", 0),
+            "sender": data.get("sender", {}).get("displayName", "N/A"),
+            "receiver": data.get("receiver", {}).get("displayName", "N/A"),
+            "transDate": data.get("transDate"),
+            "transTime": data.get("transTime"),
+            "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        doc_ref.set(log_data)
+        return True, log_data
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการตรวจสอบประวัติสลิป: {e}")
+        return False, None
+
+def load_slip_history(limit=50):
+    """ดึงประวัติการสแกนสลิปล่าสุดสำหรับแสดงในหน้า Admin"""
+    try:
+        docs = db.collection("scanned_slips").order_by("scanned_at", direction=firestore.Query.DESCENDING).limit(limit).stream()
+        history = [doc.to_dict() for doc in docs]
+        return history
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการดึงประวัติ: {e}")
+        return []
 
 BRANCH_ID = "SLIPOK0BYYZJR"
 SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
