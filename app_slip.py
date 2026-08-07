@@ -99,7 +99,13 @@ AVAILABLE_SERVICES = {
 }
 
 # ----------------------------------------------------
-# 3. ส่วนหัวแบรนด์ AppCentralWeb
+# 3. ตรวจสอบ URL ว่าเรียกหน้า Admin หรือไม่ (?page=admin)
+# ----------------------------------------------------
+query_params = st.query_params
+is_admin_page = query_params.get("page") == "admin"
+
+# ----------------------------------------------------
+# 4. ส่วนหัวแบรนด์ AppCentralWeb
 # ----------------------------------------------------
 st.markdown("""
 <div class="brand-header">
@@ -109,101 +115,12 @@ st.markdown("""
 <div class="gold-divider"></div>
 """, unsafe_allow_html=True)
 
-# ====================================================
-# 4. หน้าฝั่งลูกค้า (ตรวจสอบสลิป - หน้าหลัก)
-# ====================================================
-st.subheader("🧾 ตรวจสอบสลิปโอนเงิน")
-
-tenant_key = st.text_input("🔑 กรอก ACW License Key ของคุณ:", type="password", placeholder="เช่น ACW-XXXXXX", key="client_key_input")
-uploaded_file = st.file_uploader("อัปโหลดภาพสลิปโอนเงิน (PNG, JPG)", type=["jpg", "png", "jpeg"], key="slip_file_uploader")
-
-if uploaded_file is not None:
-    st.image(uploaded_file, caption="สลิปที่ต้องการตรวจสอบ", width=240)
-    
-    if st.button("✨ ตรวจสอบรายการนี้", use_container_width=True, key="btn_check_slip"):
-        tenants = load_tenants()
-        
-        if not tenant_key:
-            st.error("⚠️ กรุณากรอก ACW License Key ก่อนทำการตรวจสอบ")
-        elif tenant_key not in tenants:
-            st.error("❌ License Key ไม่ถูกต้อง หรือไม่มีสิทธิ์ใช้งานในระบบ")
-        else:
-            tenant = tenants[tenant_key]
-            
-            # เช็กสิทธิ์หลัก
-            if not tenant.get("active", True):
-                st.error("❌ บัญชีของคุณถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบ")
-            else:
-                # ดึงข้อมูลบริการสลิป
-                services = tenant.get("services", {})
-                if "slip" in services:
-                    slip_info = services["slip"]
-                    is_nested = True
-                else:
-                    slip_info = tenant
-                    is_nested = False
-                
-                is_active = slip_info.get("active", True)
-                expire_date = slip_info.get("expire_date", "2000-01-01")
-                used_quota = slip_info.get("used_quota", 0)
-                total_quota = slip_info.get("total_quota", 0)
-                today_str = datetime.now().strftime("%Y-%m-%d")
-
-                if not is_active:
-                    st.error("❌ บัญชีของคุณยังไม่ได้เปิดใช้บริการสแกนสลิป")
-                elif today_str > expire_date:
-                    st.error("❌ สิทธิ์การใช้งานสแกนสลิปของคุณหมดอายุแล้ว กรุณาติดต่อผู้ให้บริการเพื่อต่ออายุ")
-                elif used_quota >= total_quota:
-                    st.error("❌ จำนวนโควต้าสลิปของคุณหมดแล้ว กรุณาอัปเกรดแพ็กเกจ")
-                else:
-                    with st.spinner("กำลังเชื่อมต่อระบบธนาคาร..."):
-                        try:
-                            url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
-                            headers = {"x-authorization": SLIPOK_API_KEY}
-                            files = {"files": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-
-                            response = requests.post(url, headers=headers, files=files)
-                            result = response.json()
-
-                            if response.status_code == 200 and result.get("success"):
-                                data = result.get("data", {})
-                                
-                                # หักโควต้าและบันทึกข้อมูล
-                                if is_nested:
-                                    tenants[tenant_key]["services"]["slip"]["used_quota"] += 1
-                                else:
-                                    tenants[tenant_key]["used_quota"] += 1
-                                save_tenants(tenants)
-                                
-                                st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
-                                st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
-                                
-                                st.markdown(f"""
-                                <div class="result-box">
-                                    <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
-                                    <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
-                                    <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
-                                    <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
-                                    <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
-                                    <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            else:
-                                st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
-                        except Exception as e:
-                            st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
-
-st.markdown("<br><br>", unsafe_allow_html=True)
-
-
-
-
 
 # ====================================================
-# 5. ฝั่งผู้ดูแลระบบ (Admin - ซ่อนไว้ล่างสุดของหน้า)
+# เงื่อนไขแสดงผล: ถ้า URL มี ?page=admin ให้แสดงหน้าแอดมิน
 # ====================================================
-with st.expander("🛡️"):
-    st.subheader("🛡️ ระบบจัดการ (Admin)")
+if is_admin_page:
+    st.subheader("🛡️ ระบบผู้ดูแลระบบ (Admin)")
     
     admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
     
@@ -346,3 +263,88 @@ with st.expander("🛡️"):
 
     elif admin_password:
         st.error("❌ รหัสผ่าน Admin ไม่ถูกต้อง")
+
+# ====================================================
+# หากไม่ใช่ ?page=admin ให้แสดงหน้าตรวจสอบสลิปของลูกค้าปกติ
+# ====================================================
+else:
+    st.subheader("🧾 ตรวจสอบสลิปโอนเงิน")
+
+    tenant_key = st.text_input("🔑 กรอก ACW License Key ของคุณ:", type="password", placeholder="เช่น ACW-XXXXXX", key="client_key_input")
+    uploaded_file = st.file_uploader("อัปโหลดภาพสลิปโอนเงิน (PNG, JPG)", type=["jpg", "png", "jpeg"], key="slip_file_uploader")
+
+    if uploaded_file is not None:
+        st.image(uploaded_file, caption="สลิปที่ต้องการตรวจสอบ", width=240)
+        
+        if st.button("✨ ตรวจสอบรายการนี้", use_container_width=True, key="btn_check_slip"):
+            tenants = load_tenants()
+            
+            if not tenant_key:
+                st.error("⚠️ กรุณากรอก ACW License Key ก่อนทำการตรวจสอบ")
+            elif tenant_key not in tenants:
+                st.error("❌ License Key ไม่ถูกต้อง หรือไม่มีสิทธิ์ใช้งานในระบบ")
+            else:
+                tenant = tenants[tenant_key]
+                
+                # เช็กสิทธิ์หลัก
+                if not tenant.get("active", True):
+                    st.error("❌ บัญชีของคุณถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบ")
+                else:
+                    # ดึงข้อมูลบริการสลิป
+                    services = tenant.get("services", {})
+                    if "slip" in services:
+                        slip_info = services["slip"]
+                        is_nested = True
+                    else:
+                        slip_info = tenant
+                        is_nested = False
+                    
+                    is_active = slip_info.get("active", True)
+                    expire_date = slip_info.get("expire_date", "2000-01-01")
+                    used_quota = slip_info.get("used_quota", 0)
+                    total_quota = slip_info.get("total_quota", 0)
+                    today_str = datetime.now().strftime("%Y-%m-%d")
+
+                    if not is_active:
+                        st.error("❌ บัญชีของคุณยังไม่ได้เปิดใช้บริการสแกนสลิป")
+                    elif today_str > expire_date:
+                        st.error("❌ สิทธิ์การใช้งานสแกนสลิปของคุณหมดอายุแล้ว กรุณาติดต่อผู้ให้บริการเพื่อต่ออายุ")
+                    elif used_quota >= total_quota:
+                        st.error("❌ จำนวนโควต้าสลิปของคุณหมดแล้ว กรุณาอัปเกรดแพ็กเกจ")
+                    else:
+                        with st.spinner("กำลังเชื่อมต่อระบบธนาคาร..."):
+                            try:
+                                url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
+                                headers = {"x-authorization": SLIPOK_API_KEY}
+                                files = {"files": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+
+                                response = requests.post(url, headers=headers, files=files)
+                                result = response.json()
+
+                                if response.status_code == 200 and result.get("success"):
+                                    data = result.get("data", {})
+                                    
+                                    # หักโควต้าและบันทึกข้อมูล
+                                    if is_nested:
+                                        tenants[tenant_key]["services"]["slip"]["used_quota"] += 1
+                                    else:
+                                        tenants[tenant_key]["used_quota"] += 1
+                                    save_tenants(tenants)
+                                    
+                                    st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
+                                    st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
+                                    
+                                    st.markdown(f"""
+                                    <div class="result-box">
+                                        <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
+                                        <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
+                                        <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
+                                        <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
+                                        <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
+                                        <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                else:
+                                    st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
+                            except Exception as e:
+                                st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
