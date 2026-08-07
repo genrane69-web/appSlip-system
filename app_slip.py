@@ -491,6 +491,19 @@ else:
                                                 tenant["used_quota"] += 1
                                             save_single_tenant(tenant_key, tenant)
                                             
+                                            # 📩 ส่งแจ้งเตือนแอดมินผ่าน LINE เมื่อสมาชิกสแกนสลิปสำเร็จ
+                                            notify_msg = (
+                                                f"\n🧾 มีการสแกนตรวจสลิปใหม่!"
+                                                f"\n👤 ร้านค้า/สมาชิก: {tenant.get('name', 'N/A')}"
+                                                f"\n🔑 Key: {tenant_key}"
+                                                f"\n💵 ยอดเงิน: ฿{data.get('amount', 0):,.2f}"
+                                                f"\n👤 ผู้โอน: {data.get('sender', {}).get('displayName', 'N/A')}"
+                                                f"\n🏦 ผู้รับ: {data.get('receiver', {}).get('displayName', 'N/A')}"
+                                                f"\n🔢 เลขรายการ: {trans_ref}"
+                                                f"\n📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง"
+                                            )
+                                            send_line_notify(notify_msg)
+                                            
                                             st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
                                             st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
                                             
