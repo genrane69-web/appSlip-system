@@ -293,7 +293,7 @@ else:
     if "💎 สมัครใช้งาน" in menu_mode:
         st.subheader("🛒 เลือกแพ็กเกจการใช้งาน")
         
-        col1, col2, col3 = st.columns(3)
+      col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("""
             <div class="package-card">
@@ -315,9 +315,9 @@ else:
         with col3:
             st.markdown("""
             <div class="package-card">
-                <h4>🥇 Pro Unlimited</h4>
+                <h4>🥇 Pro</h4>
                 <h2 style="color: #D4AF37;">฿999</h2>
-                <p>สแกนสลิป <b>10,000</b> ครั้ง/เดือน</p>
+                <p>สแกนสลิป <b>5,000</b> ครั้ง/เดือน</p>
                 <p>อายุใช้งาน 30 วัน</p>
             </div>
             """, unsafe_allow_html=True)
