@@ -198,7 +198,7 @@ st.markdown("<br><br>", unsafe_allow_html=True)
 # ====================================================
 # 5. ฝั่งผู้ดูแลระบบ (Admin - ซ่อนไว้ล่างสุดของหน้า)
 # ====================================================
-with st.expander("🛡️ Admin Panel"):
+with st.expander("🛡️"):
     st.subheader("🛡️ ระบบจัดการ (Admin)")
     
     admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
