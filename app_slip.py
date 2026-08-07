@@ -5,6 +5,24 @@ import secrets
 import os
 from datetime import datetime, timedelta
 
+# ====================================================
+# 🔥 [เพิ่มตรงนี้] ตั้งค่าเชื่อมต่อ Firebase Firestore
+# ====================================================
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+if not firebase_admin._apps:
+    # ดึงค่าจาก Streamlit Secrets
+    key_dict = dict(st.secrets["firebase_service_account"])
+    if "private_key" in key_dict:
+        key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+    
+    cred = credentials.Certificate(key_dict)
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+# ====================================================
+
 # ----------------------------------------------------
 # 1. ตั้งค่าหน้าตาเว็บและ CSS โทน Luxury Dark Gold
 # ----------------------------------------------------
