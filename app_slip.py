@@ -88,7 +88,7 @@ custom_css = """
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 2. อ่าน/บันทึกฐานข้อมูลผ่าน Firebase Firestore (ปรับแก้แล้ว)
+# 2. อ่าน/บันทึกฐานข้อมูลผ่าน Firebase Firestore
 # ----------------------------------------------------
 def load_tenants():
     try:
@@ -191,7 +191,7 @@ if is_admin_page:
     
     admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
     
-# ดึงรหัสผ่านจาก Secrets (หากหาไม่พบจะดึงค่าสำรองมาใช้)
+    # ดึงรหัสผ่านจาก Secrets (หากหาไม่พบจะดึงค่าสำรองมาใช้)
     CORRECT_ADMIN_PWD = st.secrets.get("ADMIN_PASSWORD", "kunyakronpromsiri01A@")
 
     if admin_password == CORRECT_ADMIN_PWD:
@@ -270,7 +270,7 @@ if is_admin_page:
                                 st.rerun()
                     with col_m2:
                         if st.button("🗑️ ลบบัญชีนี้", key=f"del_master_{key}"):
-                            delete_tenant(key)  # ✅ เรียกฟังก์ชันลบตรงจาก Firebase
+                            delete_tenant(key)
                             st.rerun()
                     
                     st.markdown("#### ⚙️ สถานะบริการในระบบ")
@@ -329,13 +329,13 @@ if is_admin_page:
                         st.divider()
         else:
             st.info("ยังไม่มีผู้เช่าในระบบ")
-                    # ----------------------------------------------------
+
+        # ----------------------------------------------------
         # 3. แสดงตารางประวัติการสแกนสลิปย้อนหลัง (History Log)
         # ----------------------------------------------------
         st.markdown("---")
         st.markdown("### 📜 ประวัติการสแกนสลิปย้อนหลัง (History Log)")
         
-        # ดึงข้อมูลประวัติ 50 รายการล่าสุด
         history_data = load_slip_history(limit=50)
         
         if history_data:
@@ -357,8 +357,6 @@ if is_admin_page:
             )
         else:
             st.info("💡 ยังไม่มีประวัติการสแกนสลิปในระบบ")
-
-            
 
     elif admin_password:
         st.error("❌ รหัสผ่าน Admin ไม่ถูกต้อง")
@@ -420,7 +418,7 @@ else:
                                 response = requests.post(url, headers=headers, files=files)
                                 result = response.json()
 
-                              if response.status_code == 200 and result.get("success"):
+                                if response.status_code == 200 and result.get("success"):
                                     data = result.get("data", {})
                                     trans_ref = data.get("transRef")
                                     
