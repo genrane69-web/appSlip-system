@@ -390,30 +390,44 @@ else:
                                 response = requests.post(url, headers=headers, files=files)
                                 result = response.json()
 
-                                if response.status_code == 200 and result.get("success"):
+                              if response.status_code == 200 and result.get("success"):
                                     data = result.get("data", {})
+                                    trans_ref = data.get("transRef")
                                     
-                                    # หักโควต้าและบันทึกข้อมูล
-                                    if is_nested:
-                                        tenant["services"]["slip"]["used_quota"] += 1
+                                    # 🛑 เช็กสลิปซ้ำ (Anti-Reuse Check)
+                                    is_valid_slip, slip_log = check_and_log_slip(
+                                        trans_ref=trans_ref, 
+                                        data=data, 
+                                        tenant_key=tenant_key, 
+                                        tenant_name=tenant.get("name", "N/A")
+                                    )
+                                    
+                                    if not is_valid_slip:
+                                        st.error("❌ **สลิปนี้ถูกใช้งานไปแล้ว! (Anti-Reuse)**")
+                                        if slip_log:
+                                            st.warning(f"⚠️ ถูกสแกนครั้งแรกเมื่อ: {slip_log.get('scanned_at')} โดยบัญชี: {slip_log.get('tenant_name')}")
                                     else:
-                                        tenant["used_quota"] += 1
-                                    
-                                    save_single_tenant(tenant_key, tenant) # ✅ บันทึกเฉพาะผู้ใช้รายนี้
-                                    
-                                    st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
-                                    st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
-                                    
-                                    st.markdown(f"""
-                                    <div class="result-box">
-                                        <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
-                                        <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
-                                        <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
-                                        <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
-                                        <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
-                                        <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                                        # หักโควต้าและบันทึกข้อมูลลูกค้า
+                                        if is_nested:
+                                            tenant["services"]["slip"]["used_quota"] += 1
+                                        else:
+                                            tenant["used_quota"] += 1
+                                        
+                                        save_single_tenant(tenant_key, tenant)
+                                        
+                                        st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
+                                        st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
+                                        
+                                        st.markdown(f"""
+                                        <div class="result-box">
+                                            <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
+                                            <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
+                                            <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
+                                            <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
+                                            <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
+                                            <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
+                                        </div>
+                                        """, unsafe_allow_html=True)
                                 else:
                                     st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
                             except Exception as e:
