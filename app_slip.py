@@ -176,9 +176,9 @@ def load_slip_history(limit=50):
         st.error(f"เกิดข้อผิดพลาดในการดึงประวัติ: {e}")
         return []
 
-BRANCH_ID = st.secrets.get("SLIPOK_BRANCH_ID", "73160")
-SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "SLIPOK0BYYZJR")
-PROMPTPAY_NO = st.secrets.get("PROMPTPAY_NO", "0645315797")
+BRANCH_ID = st.secrets.get("SLIPOK_BRANCH_ID", "")
+SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "")
+PROMPTPAY_NO = st.secrets.get("PROMPTPAY_NO", "")
 
 PACKAGES = {
     "starter": {"name": "🥉 Starter Package", "price": 299, "quota": 500, "days": 30},
