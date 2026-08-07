@@ -1,3 +1,6 @@
 streamlit
 requests
 firebase-admin
+fastapi
+uvicorn
+python-multipart
