@@ -332,6 +332,35 @@ if is_admin_page:
 
     elif admin_password:
         st.error("❌ รหัสผ่าน Admin ไม่ถูกต้อง")
+        
+        # ----------------------------------------------------
+        # 3. แสดงตารางประวัติการสแกนสลิปย้อนหลัง (History Log)
+        # ----------------------------------------------------
+        st.markdown("---")
+        st.markdown("### 📜 ประวัติการสแกนสลิปย้อนหลัง (History Log)")
+        
+        # ดึงข้อมูลประวัติ 50 รายการล่าสุด
+        history_data = load_slip_history(limit=50)
+        
+        if history_data:
+            st.dataframe(
+                history_data,
+                column_config={
+                    "scanned_at": "เวลาที่สแกน",
+                    "tenant_name": "ชื่อผู้ใช้ / ร้านค้า",
+                    "tenant_key": "License Key",
+                    "amount": st.column_config.NumberColumn("ยอดเงิน", format="฿%.2f"),
+                    "sender": "ชื่อผู้โอน",
+                    "receiver": "ชื่อผู้รับ",
+                    "transRef": "เลขที่รายการ (transRef)",
+                    "transDate": "วันที่สลิป",
+                    "transTime": "เวลาสลิป"
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("💡 ยังไม่มีประวัติการสแกนสลิปในระบบ")
 
 # ====================================================
 # หากไม่ใช่ ?page=admin ให้แสดงหน้าตรวจสอบสลิปของลูกค้าปกติ
