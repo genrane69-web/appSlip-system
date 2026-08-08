@@ -1,586 +1,358 @@
-import streamlit as st
-import requests
-import json
-import secrets
-import os
-from datetime import datetime, timedelta
-
-# ====================================================
-# 0. ตั้งค่าเชื่อมต่อ Firebase Firestore (ตามโค้ดเดิม)
-# ====================================================
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Request
 import firebase_admin
 from firebase_admin import credentials, firestore
+import requests
+from datetime import datetime
+import json
+import os
+import hmac
+import hashlib
+import base64
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+app = FastAPI(title="AppCentralWeb API Service")
+
+# ----------------------------------------------------
+# Rate limiting: จำกัดจำนวนคำขอต่อ IP เพื่อกันการเดา License Key
+# หรือยิง endpoint ถี่เกินไป
+# ----------------------------------------------------
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ----------------------------------------------------
+# 1. เชื่อมต่อ Firebase (รองรับการดึงกุญแจแบบปลอดภัย)
+# ----------------------------------------------------
 if not firebase_admin._apps:
-    key_dict = dict(st.secrets["firebase_service_account"])
-    if "private_key" in key_dict:
-        key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
-    
-    cred = credentials.Certificate(key_dict)
-    firebase_admin.initialize_app(cred)
-
-db = firestore.client()
-
-# ====================================================
-# 1. ตั้งค่าหน้าตาเว็บและ CSS โทน Luxury Dark Gold
-# ====================================================
-st.set_page_config(
-    page_title="AppCentralWeb - Service Platform", 
-    page_icon="💎", 
-    layout="centered"
-)
-
-custom_css = """
-<style>
-    [data-testid="stRadioButton"] > div {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-    [data-testid="stRadioButton"] label {
-        background-color: #1A1D24;
-        border: 1px solid #D4AF37;
-        border-radius: 10px;
-        padding: 14px 18px;
-        width: 100%;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    [data-testid="stRadioButton"] label:hover {
-        background-color: #252932;
-        border-color: #FFF5C0;
-    }
-
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important; display: none !important;}
-    header {visibility: hidden !important; display: none !important;}
-    [data-testid="stToolbar"] {display: none !important;}
-    [data-testid="stDecoration"] {display: none !important;}
-    [data-testid="stHeader"] {display: none !important;}
-    
-    .stApp {
-        background-color: #0F1115;
-        color: #E2E8F0;
-        font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    .brand-header {
-        text-align: center;
-        padding-top: 10px;
-        padding-bottom: 5px;
-    }
-    .brand-title {
-        font-size: 28px;
-        font-weight: 800;
-        background: linear-gradient(90deg, #D4AF37, #FFF5C0, #AA7C11);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: 2px;
-        margin-bottom: 2px;
-        text-transform: uppercase;
-    }
-    .brand-subtitle {
-        font-size: 10px;
-        color: #8A94A6;
-        letter-spacing: 1.5px;
-    }
-    .gold-divider {
-        height: 1px;
-        background: linear-gradient(90deg, transparent, #D4AF37, transparent);
-        margin: 15px 0 20px 0;
-    }
-    .package-card {
-        background-color: #1A1D24;
-        border: 1px solid #D4AF37;
-        border-radius: 12px;
-        padding: 15px;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .result-box {
-        background-color: #1A1D24;
-        border-left: 3px solid #D4AF37;
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 15px;
-    }
-</style>
-"""
-st.markdown(custom_css, unsafe_allow_html=True)
-
-# ====================================================
-# 2. ฟังก์ชันฐานข้อมูล Firestore & Utilities
-# ====================================================
-def load_tenants():
-    try:
-        docs = db.collection("tenants").stream()
-        tenants = {}
-        for doc in docs:
-            tenants[doc.id] = doc.to_dict()
-        return tenants
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
-        return {}
-
-def save_single_tenant(key, tenant_info):
-    try:
-        db.collection("tenants").document(key).set(tenant_info)
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการบันทึกข้อมูล: {e}")
-
-def delete_tenant(key):
-    try:
-        db.collection("tenants").document(key).delete()
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการลบข้อมูล: {e}")
-        
-def check_and_log_slip(trans_ref, data, tenant_key, tenant_name):
-    try:
-        doc_ref = db.collection("scanned_slips").document(trans_ref)
-        doc = doc_ref.get()
-        if doc.exists:
-            return False, doc.to_dict()
-            
-        log_data = {
-            "transRef": trans_ref,
-            "tenant_key": tenant_key,
-            "tenant_name": tenant_name,
-            "amount": data.get("amount", 0),
-            "sender": data.get("sender", {}).get("displayName", "N/A"),
-            "receiver": data.get("receiver", {}).get("displayName", "N/A"),
-            "transDate": data.get("transDate"),
-            "transTime": data.get("transTime"),
-            "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        doc_ref.set(log_data)
-        return True, log_data
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการตรวจสอบประวัติสลิป: {e}")
-        return False, None
-
-def send_line_notify(message):
-    token = st.secrets.get("LINE_NOTIFY_TOKEN", "")
-    if token:
+    firebase_config = os.getenv("FIREBASE_CREDENTIALS")
+    if firebase_config:
         try:
-            headers = {"Authorization": f"Bearer {token}"}
-            requests.post("https://notify-api.line.me/api/notify", headers=headers, data={"message": message})
+            # ตัดเครื่องหมายอัญประกาศส่วนเกินหากมี
+            firebase_config_clean = firebase_config.strip("'\"")
+            cred_dict = json.loads(firebase_config_clean)
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
         except Exception as e:
-            print(f"LINE Notify Error: {e}")
+            print(f"⚠️ Firebase Initialization Error: {e}")
+    elif os.path.exists("firebase_credentials.json"):
+        cred = credentials.Certificate("firebase_credentials.json")
+        firebase_admin.initialize_app(cred)
 
-def load_slip_history(limit=50):
-    try:
-        docs = db.collection("scanned_slips").order_by("scanned_at", direction=firestore.Query.DESCENDING).limit(limit).stream()
-        return [doc.to_dict() for doc in docs]
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการดึงประวัติ: {e}")
-        return []
+db = firestore.client() if firebase_admin._apps else None
 
-BRANCH_ID = st.secrets.get("SLIPOK_BRANCH_ID", "")
-SLIPOK_API_KEY = st.secrets.get("SLIPOK_SECRET_KEY", "")
-PROMPTPAY_NO = st.secrets.get("PROMPTPAY_NO", "")
+# แก้ไข: ไม่ใช้ค่า default ที่หน้าตาเหมือนคีย์จริงฝังในโค้ดอีกต่อไป
+# ถ้าไม่ตั้งค่า env var ระบบจะแจ้ง error ชัดเจนแทนที่จะแอบใช้ค่าอื่น
+BRANCH_ID = os.getenv("SLIPOK_BRANCH_ID", "")
+SLIPOK_API_KEY = os.getenv("SLIPOK_SECRET_KEY", "")
 
-PACKAGES = {
-    "starter": {"name": "🥉 Starter Package", "price": 299, "quota": 500, "days": 30},
-    "business": {"name": "🥈 Business Package", "price": 599, "quota": 2000, "days": 30},
-    "pro": {"name": "🥇 Pro Package", "price": 999, "quota": 5000, "days": 30}
+
+def _require_slipok_config():
+    if not BRANCH_ID or not SLIPOK_API_KEY:
+        raise HTTPException(status_code=500, detail="ยังไม่ได้ตั้งค่า SLIPOK_BRANCH_ID / SLIPOK_SECRET_KEY บนเซิร์ฟเวอร์")
+
+
+# ----------------------------------------------------
+# หน้าแรกสำหรับเช็กสถานะเซิร์ฟเวอร์ (GET /)
+# ----------------------------------------------------
+@app.get("/")
+def read_root():
+    return {"status": "online", "message": "AppCentralWeb API Service is running!"}
+
+
+# ----------------------------------------------------
+# Helper Functions
+# ----------------------------------------------------
+def verify_tenant_key(tenant_key: str):
+    """เช็คแบบเร็ว (ไม่ atomic) เพื่อคัดกรองคำขอที่ผิดเงื่อนไขชัดเจนออกก่อน
+    เพื่อไม่ต้องเสียโควต้าเรียก SlipOK โดยเปล่าประโยชน์
+    การตัดสินใจที่ต้องกัน race condition จริง (นับโควต้า/anti-reuse)
+    จะทำอีกครั้งแบบ atomic ใน redeem_slip_atomic()
+    """
+    if not db:
+        raise HTTPException(status_code=500, detail="ไม่สามารถเชื่อมต่อฐานข้อมูล Firebase ได้")
+
+    doc_ref = db.collection("tenants").document(tenant_key)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=401, detail="License Key ไม่ถูกต้อง")
+
+    tenant = doc.to_dict()
+    if not tenant.get("active", True):
+        raise HTTPException(status_code=403, detail="บัญชีถูกระงับการใช้งาน")
+
+    services = tenant.get("services", {})
+    slip_info = services.get("slip", tenant)
+
+    if not slip_info.get("active", True):
+        raise HTTPException(status_code=403, detail="บริการสแกนสลิปยังไม่ได้เปิดใช้งาน")
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    if today_str > slip_info.get("expire_date", "2000-01-01"):
+        raise HTTPException(status_code=403, detail="License Key หมดอายุแล้ว")
+
+    if slip_info.get("used_quota", 0) >= slip_info.get("total_quota", 0):
+        raise HTTPException(status_code=429, detail="โควต้าการสแกนสลิปหมดแล้ว")
+
+    return tenant, slip_info
+
+
+def redeem_slip_atomic(tenant_key: str, log_data: dict):
+    """ตรวจสอบซ้ำและหักโควต้าแบบ atomic ในทรานแซกชันเดียว (แก้ race condition)
+    คืนค่า (ok: bool, status: str, payload: dict|None)
+    status เป็นหนึ่งใน: ok, duplicate, not_found, suspended, service_inactive, expired, quota_exceeded
+    """
+    tenant_ref = db.collection("tenants").document(tenant_key)
+    slip_ref = db.collection("scanned_slips").document(log_data["transRef"])
+
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def _txn(transaction):
+        slip_snap = slip_ref.get(transaction=transaction)
+        if slip_snap.exists:
+            return False, "duplicate", slip_snap.to_dict()
+
+        tenant_snap = tenant_ref.get(transaction=transaction)
+        if not tenant_snap.exists:
+            return False, "not_found", None
+        tenant = tenant_snap.to_dict()
+
+        if not tenant.get("active", True):
+            return False, "suspended", tenant
+
+        services = tenant.get("services", {})
+        is_nested = "slip" in services
+        slip_info = services["slip"] if is_nested else tenant
+
+        if not slip_info.get("active", True):
+            return False, "service_inactive", tenant
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if today_str > slip_info.get("expire_date", "2000-01-01"):
+            return False, "expired", tenant
+
+        used = slip_info.get("used_quota", 0)
+        total = slip_info.get("total_quota", 0)
+        if used >= total:
+            return False, "quota_exceeded", tenant
+
+        if is_nested:
+            transaction.update(tenant_ref, {"services.slip.used_quota": firestore.Increment(1)})
+        else:
+            transaction.update(tenant_ref, {"used_quota": firestore.Increment(1)})
+
+        transaction.set(slip_ref, log_data)
+
+        remaining = total - (used + 1)
+        return True, "ok", {"tenant": tenant, "remaining": remaining}
+
+    return _txn(transaction)
+
+
+REASON_MESSAGES = {
+    "duplicate": "สลิปนี้ถูกใช้งานไปแล้ว (Anti-Reuse)",
+    "not_found": "License Key ไม่ถูกต้อง",
+    "suspended": "บัญชีถูกระงับการใช้งาน",
+    "service_inactive": "บริการสแกนสลิปยังไม่ได้เปิดใช้งาน",
+    "expired": "License Key หมดอายุแล้ว",
+    "quota_exceeded": "โควต้าการสแกนสลิปหมดแล้ว",
 }
 
-# ====================================================
-# 3. ตรวจสอบ URL หน้า Admin (?page=admin)
-# ====================================================
-query_params = st.query_params
-is_admin_page = query_params.get("page") == "admin"
 
-st.markdown("""
-<div class="brand-header">
-    <div class="brand-title">AppCentralWeb</div>
-    <div class="brand-subtitle">AUTOMATED SERVICE PLATFORM</div>
-</div>
-<div class="gold-divider"></div>
-""", unsafe_allow_html=True)
-
-# ====================================================
-# หน้า Admin (?page=admin)
-# ====================================================
-if is_admin_page:
-    st.subheader("🛡️ ระบบผู้ดูแลระบบ (Admin)")
-    admin_password = st.text_input("🔑 กรอกรหัสผ่าน Admin:", type="password", key="admin_pwd_input")
-    CORRECT_ADMIN_PWD = st.secrets.get("ADMIN_PASSWORD", "kunyakronpromsiri01A@")
-
-    if admin_password == CORRECT_ADMIN_PWD:
-        st.success("เข้าสู่ระบบ Admin เรียบร้อยแล้ว")
-        tenants = load_tenants()
-        
-        st.markdown("### ➕ ออก License Key และแพ็กเกจใหม่ (Manual)")
-        with st.form("create_key_form_united"):
-            client_name = st.text_input("ชื่อลูกค้า / ชื่อร้านค้า:")
-            days = st.number_input("ระยะเวลาใช้งานหลัก (วัน):", min_value=1, value=30)
-            enable_slip = st.checkbox("🧾 เปิดใช้บริการสแกนสลิป", value=True)
-            slip_quota = st.number_input("โควต้าสแกนสลิป (ครั้ง/เดือน):", value=500, step=50) if enable_slip else 0
-            
-            submit = st.form_submit_button("🚀 สร้าง Key ใหม่ทันที", use_container_width=True)
-            if submit and client_name:
-                new_key = f"ACW-{secrets.token_hex(4).upper()}"
-                exp_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
-                new_tenant_data = {
-                    "name": client_name,
-                    "active": True,
-                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "services": {
-                        "slip": {
-                            "active": enable_slip,
-                            "total_quota": slip_quota if enable_slip else 0,
-                            "used_quota": 0,
-                            "expire_date": exp_date if enable_slip else "2000-01-01"
-                        }
-                    }
-                }
-                save_single_tenant(new_key, new_tenant_data)
-                st.success(f"สร้าง Key สำเร็จสำหรับ: **{client_name}**")
-                st.code(new_key, language="text")
-                st.rerun()
-
-        st.markdown("---")
-        st.markdown("### 📋 จัดการผู้เช่าและควบคุมสิทธิ์")
-        if tenants:
-            for key, info in list(tenants.items()):
-                master_active = info.get("active", True)
-                status_tag = "🟢 ปกติ" if master_active else "🔴 ระงับ"
-                with st.expander(f"👤 {info.get('name', 'ไม่ระบุชื่อ')} [{status_tag}] - Key: {key}"):
-                    st.write(f"**License Key:** `{key}`")
-                    col_m1, col_m2 = st.columns(2)
-                    with col_m1:
-                        if st.button("⛔ สลับสถานะบัญชี", key=f"toggle_active_{key}"):
-                            info["active"] = not master_active
-                            save_single_tenant(key, info)
-                            st.rerun()
-                    with col_m2:
-                        if st.button("🗑️ ลบบัญชีนี้", key=f"del_master_{key}"):
-                            delete_tenant(key)
-                            st.rerun()
-        else:
-            st.info("ยังไม่มีผู้เช่าในระบบ")
-
-        st.markdown("---")
-        st.markdown("### 📜 ประวัติการสแกนสลิปย้อนหลัง")
-        history_data = load_slip_history(limit=50)
-        if history_data:
-            st.dataframe(history_data, use_container_width=True, hide_index=True)
-
-# ====================================================
-# หน้าหลักผู้ใช้บริการ (Default Page)
-# ====================================================
-else:
-    menu_mode = st.radio(
-        "เลือกเมนูที่ต้องการใช้งาน:",
-        options=[
-            "💎 สมัครใช้งาน / เติมโควต้า (Auto Active)",
-            "🔑 สำหรับสมาชิก (สแกนสลิป / ดูคู่มือ API)"
-        ],
-        index=0,
-        label_visibility="collapsed"
-    )
-
-    st.markdown("<div style='margin-bottom: 25px;'></div>", unsafe_allow_html=True)
-
-    # ====================================================
-    # 1. สมัครใช้งาน & ชำระเงินอัตโนมัติ
-    # ====================================================
-    if "💎 สมัครใช้งาน" in menu_mode:
-        st.subheader("🛒 เลือกแพ็กเกจการใช้งาน")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("""
-            <div class="package-card">
-                <h4>🥉 Starter</h4>
-                <h2 style="color: #D4AF37;">฿299</h2>
-                <p>สแกนสลิป <b>500</b> ครั้ง</p>
-                <p>อายุใช้งาน 30 วัน</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown("""
-            <div class="package-card">
-                <h4>🥈 Business</h4>
-                <h2 style="color: #D4AF37;">฿599</h2>
-                <p>สแกนสลิป <b>2,000</b> ครั้ง</p>
-                <p>อายุใช้งาน 30 วัน</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            st.markdown("""
-            <div class="package-card">
-                <h4>🥇 Pro</h4>
-                <h2 style="color: #D4AF37;">฿999</h2>
-                <p>สแกนสลิป <b>5,000</b> ครั้ง</p>
-                <p>อายุใช้งาน 30 วัน</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("### 📝 กรอกข้อมูลสั่งซื้อ / เติมโควต้า & ชำระเงิน")
-
-        action_type = st.radio("รูปแบบการทำรายการ:", ["สร้าง Key ใหม่ (ลูกค้าใหม่)", "เติมโควต้า / ต่ออายุ (Key เดิม)"], horizontal=True)
-        
-        target_key = ""
-        client_shop_name = ""
-        
-        if action_type == "สร้าง Key ใหม่ (ลูกค้าใหม่)":
-            client_shop_name = st.text_input("ชื่อร้านค้า / ผู้สมัครใช้งาน:", placeholder="เช่น ร้านค้าดีจริง หรือ นายสมชาย")
-        else:
-            target_key = st.text_input("กรอก Key เดิมของคุณ:", placeholder="เช่น ACW-XXXXXX").strip()
-            if target_key:
-                tenants = load_tenants()
-                if target_key in tenants:
-                    client_shop_name = tenants[target_key].get("name", "ลูกค้าเก่า")
-                    st.success(f"พบข้อมูล Key: **{client_shop_name}**")
-                else:
-                    st.error("❌ ไม่พบ Key นี้ในระบบ")
-
-        pkg_choice = st.selectbox(
-            "เลือกแพ็กเกจที่ต้องการ:", 
-            options=list(PACKAGES.keys()), 
-            format_func=lambda x: f"{PACKAGES[x]['name']} - ฿{PACKAGES[x]['price']} ({PACKAGES[x]['quota']} ครั้ง / {PACKAGES[x]['days']} วัน)"
+def send_line_message(channel_access_token: str, to_user_id: str, message: str):
+    """ส่งข้อความแจ้งเตือนผ่าน LINE Messaging API (Push)"""
+    if not channel_access_token or not to_user_id:
+        return
+    try:
+        requests.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers={
+                "Authorization": f"Bearer {channel_access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"to": to_user_id, "messages": [{"type": "text", "text": message[:5000]}]},
+            timeout=10,
         )
-        selected_pkg = PACKAGES[pkg_choice]
+    except Exception as e:
+        print(f"LINE push error: {e}")
 
-        if client_shop_name or target_key:
-            st.markdown("#### 📱 สแกน QR Code ชำระเงินผ่าน PromptPay")
-            qr_url = f"https://promptpay.io/{PROMPTPAY_NO}/{selected_pkg['price']}.png"
-            
-            c_qr1, c_qr2 = st.columns([1, 2])
-            with c_qr1:
-                st.image(qr_url, caption=f"ยอดชำระ ฿{selected_pkg['price']}", width=200)
-            with c_qr2:
-                st.info(f"""
-                **รายละเอียดการโอนเงิน:**
-                * **จำนวนเงิน:** ฿{selected_pkg['price']}.00
-                * **PromptPay:** {PROMPTPAY_NO}
-                * **เมื่อโอนเสร็จแล้ว:** อัปโหลดสลิปด้านล่างเพื่อรับ/เติม Key ทันที
-                """)
 
-            payment_slip = st.file_uploader("อัปโหลดสลิปการโอนเงินเพื่อยืนยัน (PNG, JPG)", type=["jpg", "png", "jpeg"], key="auto_payment_slip")
+def line_reply(channel_access_token: str, reply_token: str, message: str):
+    """ตอบกลับข้อความผ่าน LINE Messaging API (Reply) — ไม่มีค่าใช้จ่ายเพิ่ม"""
+    if not reply_token:
+        return
+    try:
+        requests.post(
+            "https://api.line.me/v2/bot/message/reply",
+            headers={
+                "Authorization": f"Bearer {channel_access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"replyToken": reply_token, "messages": [{"type": "text", "text": message[:5000]}]},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"LINE reply error: {e}")
 
-            if payment_slip and st.button("✨ ยืนยันการชำระเงินและรับ/เติม License Key ทันที", use_container_width=True):
-                with st.spinner("กำลังตรวจสอบสลิปผ่าน SlipOK..."):
-                    try:
-                        url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
-                        headers = {"x-authorization": SLIPOK_API_KEY}
-                        files = {"files": (payment_slip.name, payment_slip.getvalue(), payment_slip.type)}
 
-                        response = requests.post(url, headers=headers, files=files)
-                        result = response.json()
+def verify_line_signature(channel_secret: str, body: bytes, signature: str) -> bool:
+    if not channel_secret or not signature:
+        return False
+    digest = hmac.new(channel_secret.encode("utf-8"), body, hashlib.sha256).digest()
+    expected_signature = base64.b64encode(digest).decode("utf-8")
+    return hmac.compare_digest(expected_signature, signature)
 
-                        if response.status_code == 200 and result.get("success"):
-                            data = result.get("data", {})
-                            trans_ref = data.get("transRef")
-                            paid_amount = float(data.get("amount", 0))
 
-                            # 1. เช็คยอดเงิน
-                            if paid_amount < selected_pkg["price"]:
-                                st.error(f"❌ ยอดเงินในสลิป (฿{paid_amount:.2f}) ไม่ครบตามราคาระบบ (฿{selected_pkg['price']})")
-                            else:
-                                # 2. เช็คสลิปซ้ำ (Anti-Reuse)
-                                is_valid_slip, slip_log = check_and_log_slip(
-                                    trans_ref=trans_ref, 
-                                    data=data, 
-                                    tenant_key=target_key if target_key else "AUTO_PURCHASE", 
-                                    tenant_name=client_shop_name
-                                )
+def _call_slipok(filename: str, file_bytes: bytes, content_type: str):
+    _require_slipok_config()
+    url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
+    headers = {"x-authorization": SLIPOK_API_KEY}
+    files = {"files": (filename, file_bytes, content_type)}
+    response = requests.post(url, headers=headers, files=files, timeout=30)
+    return response.status_code, response.json()
 
-                                if not is_valid_slip:
-                                    st.error("❌ สลิปนี้เคยถูกใช้งานไปแล้ว ไม่สามารถใช้ซ้ำได้")
-                                else:
-                                    tenants = load_tenants()
-                                    final_key = target_key if action_type == "เติมโควต้า / ต่ออายุ (Key เดิม)" else f"ACW-{secrets.token_hex(4).upper()}"
-                                    
-                                    # คำนวณวันหมดอายุและโควต้า
-                                    new_exp_date = (datetime.now() + timedelta(days=selected_pkg["days"])).strftime("%Y-%m-%d")
-                                    
-                                    if final_key in tenants:
-                                        # กรณีเติมโควต้า Key เดิม
-                                        tenant_data = tenants[final_key]
-                                        curr_quota = tenant_data.get("services", {}).get("slip", {}).get("total_quota", 0)
-                                        new_quota = curr_quota + selected_pkg["quota"]
-                                        tenant_data["services"]["slip"]["total_quota"] = new_quota
-                                        tenant_data["services"]["slip"]["expire_date"] = new_exp_date
-                                        tenant_data["services"]["slip"]["active"] = True
-                                    else:
-                                        # กรณีสร้าง Key ใหม่
-                                        tenant_data = {
-                                            "name": client_shop_name,
-                                            "active": True,
-                                            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                            "services": {
-                                                "slip": {
-                                                    "active": True,
-                                                    "total_quota": selected_pkg["quota"],
-                                                    "used_quota": 0,
-                                                    "expire_date": new_exp_date
-                                                }
-                                            }
-                                        }
 
-                                    save_single_tenant(final_key, tenant_data)
+def _build_log_data(tenant_key: str, tenant_name: str, data: dict, source: str):
+    return {
+        "transRef": data.get("transRef"),
+        "tenant_key": tenant_key,
+        "tenant_name": tenant_name,
+        "amount": data.get("amount", 0),
+        "sender": data.get("sender", {}).get("displayName", "N/A"),
+        "receiver": data.get("receiver", {}).get("displayName", "N/A"),
+        "transDate": data.get("transDate"),
+        "transTime": data.get("transTime"),
+        "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "source": source,
+    }
 
-                                    # แจ้งเตือน LINE Notify
-                                    notify_msg = f"\n🎉 รายการทำรายการสำเร็จ!\n👤 ร้าน: {client_shop_name}\n📦 แพ็กเกจ: {selected_pkg['name']} (฿{paid_amount})\n🔑 Key: {final_key}\n📅 หมดอายุ: {new_exp_date}"
-                                    send_line_notify(notify_msg)
 
-                                    # แสดงผล
-                                    st.balloons()
-                                    st.success("🎉 อนุมัติรายการเรียบร้อยแล้ว!")
-                                    st.markdown(f"""
-                                    <div class="result-box">
-                                        <h3 style="color: #D4AF37; margin-top:0;">🔑 ACW License Key ของคุณ:</h3>
-                                        <h1 style="color: #4ADE80; font-family: monospace;">{final_key}</h1>
-                                        <p><b>ชื่อร้านค้า:</b> {client_shop_name}</p>
-                                        <p><b>แพ็กเกจ:</b> {selected_pkg['name']} (+{selected_pkg['quota']} ครั้ง)</p>
-                                        <p><b>วันหมดอายุใหม่:</b> {new_exp_date}</p>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                        else:
-                            st.error(f"❌ สลิปไม่ถูกต้อง: {result.get('message', 'ไม่สามารถตรวจสอบสลิปได้')}")
-                    except Exception as e:
-                        st.error(f"เกิดข้อผิดพลาดในระบบ: {e}")
+# ----------------------------------------------------
+# Endpoint 1: REST API สำหรับเว็บไซต์ลูกค้า / ใช้ร่วมกับหน้า Streamlit สมาชิก
+# ----------------------------------------------------
+@app.post("/api/v1/verify-slip")
+@limiter.limit("20/minute")
+async def verify_slip_api(
+    request: Request,
+    x_license_key: str = Header(..., description="ACW License Key ของลูกค้า"),
+    file: UploadFile = File(...),
+):
+    tenant, slip_info = verify_tenant_key(x_license_key)
 
-    # ====================================================
-    # 2. ส่วนสมาชิกสแกนสลิป & ดูคู่มือ API/Webhook
-    # ====================================================
-    else:
-        st.subheader("🧾 ตรวจสอบสลิปโอนเงิน (สำหรับสมาชิก)")
+    file_bytes = await file.read()
+    status_code, result = _call_slipok(file.filename, file_bytes, file.content_type)
 
-        tenant_key = st.text_input("🔑 กรอก ACW License Key ของคุณ:", type="password", placeholder="เช่น ACW-XXXXXX", key="client_key_input")
+    if not (status_code == 200 and result.get("success")):
+        return {"success": False, "message": result.get("message", "สลิปไม่ถูกต้อง")}
 
-        uploaded_file = st.file_uploader("อัปโหลดภาพสลิปโอนเงิน (PNG, JPG)", type=["jpg", "png", "jpeg"], key="slip_file_uploader")
+    data = result.get("data", {})
+    log_data = _build_log_data(x_license_key, tenant.get("name", "N/A"), data, source="rest_api")
 
-        if uploaded_file is not None:
-            st.image(uploaded_file, caption="สลิปที่ต้องการตรวจสอบ", width=240)
-            if st.button("✨ ตรวจสอบรายการนี้", use_container_width=True, key="btn_check_slip"):
-                tenants = load_tenants()
-                if not tenant_key:
-                    st.error("⚠️ กรุณากรอก ACW License Key ก่อนทำการตรวจสอบ")
-                elif tenant_key not in tenants:
-                    st.error("❌ License Key ไม่ถูกต้อง หรือไม่มีสิทธิ์ใช้งาน")
-                else:
-                    tenant = tenants[tenant_key]
-                    if not tenant.get("active", True):
-                        st.error("❌ บัญชีผู้ใช้นี้ถูกระงับการใช้งานชั่วคราว")
-                    else:
-                        services = tenant.get("services", {})
-                        if "slip" in services:
-                            slip_info = services["slip"]
-                            is_nested = True
-                        else:
-                            slip_info = tenant
-                            is_nested = False
-                        
-                        is_active = slip_info.get("active", True)
-                        expire_date = slip_info.get("expire_date", "2000-01-01")
-                        used_quota = slip_info.get("used_quota", 0)
-                        total_quota = slip_info.get("total_quota", 0)
-                        today_str = datetime.now().strftime("%Y-%m-%d")
+    ok, status, payload = redeem_slip_atomic(x_license_key, log_data)
 
-                        if not is_active:
-                            st.error("❌ บัญชีของคุณยังไม่ได้เปิดใช้บริการสแกนสลิป")
-                        elif today_str > expire_date:
-                            st.error("❌ License Key ของคุณหมดอายุแล้ว กรุณาต่ออายุแพ็กเกจ")
-                        elif used_quota >= total_quota:
-                            st.error("❌ จำนวนโควต้าสลิปของคุณหมดแล้ว กรุณาอัปเกรดแพ็กเกจ")
-                        else:
-                            with st.spinner("กำลังตรวจสอบสลิป..."):
-                                try:
-                                    url = f"https://api.slipok.com/api/line/apikey/{BRANCH_ID}"
-                                    headers = {"x-authorization": SLIPOK_API_KEY}
-                                    files = {"files": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+    if not ok:
+        return {"success": False, "message": REASON_MESSAGES.get(status, "ไม่สามารถตรวจสอบสลิปได้")}
 
-                                    response = requests.post(url, headers=headers, files=files)
-                                    result = response.json()
+    return {
+        "success": True,
+        "message": "ตรวจสอบสลิปสำเร็จ",
+        "data": data,
+        "remaining_quota": payload["remaining"],
+    }
 
-                                    if response.status_code == 200 and result.get("success"):
-                                        data = result.get("data", {})
-                                        trans_ref = data.get("transRef")
-                                        
-                                        is_valid_slip, slip_log = check_and_log_slip(trans_ref, data, tenant_key, tenant.get("name", "N/A"))
-                                        if not is_valid_slip:
-                                            st.error("❌ **สลิปนี้ถูกใช้งานไปแล้ว! (Anti-Reuse)**")
-                                            if slip_log:
-                                                st.warning(f"⚠️ ถูกสแกนครั้งแรกเมื่อ: {slip_log.get('scanned_at')} โดยบัญชี: {slip_log.get('tenant_name')}")
-                                        else:
-                                            if is_nested:
-                                                tenant["services"]["slip"]["used_quota"] += 1
-                                            else:
-                                                tenant["used_quota"] += 1
-                                            save_single_tenant(tenant_key, tenant)
-                                            
-                                            notify_msg = (
-                                                f"\n🧾 มีการสแกนตรวจสลิปใหม่!"
-                                                f"\n👤 ร้านค้า/สมาชิก: {tenant.get('name', 'N/A')}"
-                                                f"\n🔑 Key: {tenant_key}"
-                                                f"\n💵 ยอดเงิน: ฿{data.get('amount', 0):,.2f}"
-                                                f"\n👤 ผู้โอน: {data.get('sender', {}).get('displayName', 'N/A')}"
-                                                f"\n🏦 ผู้รับ: {data.get('receiver', {}).get('displayName', 'N/A')}"
-                                                f"\n🔢 เลขรายการ: {trans_ref}"
-                                                f"\n📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง"
-                                            )
-                                            send_line_notify(notify_msg)
-                                            
-                                            st.success("✅ ตรวจสอบสำเร็จ: สลิปนี้ถูกต้องและผ่านการโอนจริง")
-                                            st.caption(f"📊 โควต้าคงเหลือ: {total_quota - (used_quota + 1)} / {total_quota} ครั้ง")
-                                            
-                                            st.markdown(f"""
-                                            <div class="result-box">
-                                                <h4 style="color: #D4AF37; margin-top: 0;">📋 รายละเอียดการชำระเงิน</h4>
-                                                <p><b>ยอดเงิน:</b> <span style="font-size: 18px; color: #4ADE80;">฿{data.get('amount', 0):,.2f}</span></p>
-                                                <p><b>ผู้โอน:</b> {data.get('sender', {}).get('displayName', 'N/A')}</p>
-                                                <p><b>ผู้รับ:</b> {data.get('receiver', {}).get('displayName', 'N/A')}</p>
-                                                <p><b>วัน-เวลา:</b> {data.get('transDate')} ({data.get('transTime')})</p>
-                                                <p><b>เลขที่รายการ:</b> {data.get('transRef')}</p>
-                                            </div>
-                                            """, unsafe_allow_html=True)
-                                    else:
-                                        st.error(f"❌ ไม่สามารถตรวจสอบได้: {result.get('message', 'สลิปไม่ถูกต้อง หรือถูกใช้งานไปแล้ว')}")
-                                except Exception as e:
-                                    st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
 
-        st.markdown("---")
+# ----------------------------------------------------
+# Endpoint 2: Webhook สำหรับ LINE OA ของแต่ละร้าน (tenant)
+# ต้องตั้งค่า tenants/{tenant_key}.line_oa.channel_access_token
+# และ tenants/{tenant_key}.line_oa.channel_secret ไว้ก่อน (ผ่านหน้า Streamlit สมาชิก)
+# ----------------------------------------------------
+@app.post("/api/v1/line-webhook/{tenant_key}")
+@limiter.limit("60/minute")
+async def line_webhook(request: Request, tenant_key: str):
+    if not db:
+        raise HTTPException(status_code=500, detail="ไม่สามารถเชื่อมต่อฐานข้อมูล Firebase ได้")
 
-        # ====================================================
-        # คู่มือการเชื่อมต่อ API & LINE OA Webhook (นำกลับมาครบถ้วน)
-        # ====================================================
-        display_key = tenant_key.strip() if tenant_key else "ACW-XXXXXX"
-        with st.expander("📖 คู่มือการเชื่อมต่อ API & LINE OA Webhook (สำหรับนำไปใช้ในระบบของคุณ)"):
-            tab_rest, tab_line = st.tabs(["🔌 REST API (สำหรับนักพัฒนา)", "💬 LINE OA Webhook (สำหรับร้านค้า)"])
-            
-            with tab_rest:
-                st.markdown("#### 🚀 สำหรับเชื่อมต่อกับเว็บไซต์ / แอปพลิเคชัน")
-                st.caption("นำ Endpoint และ Header ด้านล่างนี้ไปใช้ยิง Request จากระบบของคุณ")
-                
-                st.markdown("**1. API Endpoint:**")
-                st.code("POST https://acw-api.onrender.com/api/v1/verify-slip", language="text")
-                
-                st.markdown("**2. HTTP Headers:**")
-                st.code(f"x-license-key: {display_key}\nContent-Type: multipart/form-data", language="http")
-                
-                st.markdown("**3. ตัวอย่างการส่งคำขอ (cURL):**")
-                st.code(f'''curl -X POST "https://acw-api.onrender.com/api/v1/verify-slip" \\
-  -H "x-license-key: {display_key}" \\
-  -F "file=@/path/to/slip.jpg"''', language="bash")
+    body_bytes = await request.body()
+    signature = request.headers.get("x-line-signature", "")
 
-            with tab_line:
-                st.markdown("#### 💬 สำหรับเชื่อมต่อกับ LINE Official Account (LINE OA)")
-                st.caption("ทำตาม 5 ขั้นตอนนี้เพื่อเปิดใช้งานระบบตรวจสลิปอัตโนมัติใน LINE OA ของคุณ")
-                
-                webhook_url = f"https://acw-api.onrender.com/api/v1/line-webhook/{display_key}"
-                
-                st.markdown("**📍 Webhook URL ของคุณ (คัดลอกลิงก์นี้):**")
-                st.code(webhook_url, language="text")
-                
-                st.markdown("""
-                **วิธีนำไปใส่ใน LINE Developers:**
-                1. เข้าไปที่เว็บ **[LINE Developers Console](https://developers.line.biz/)** แล้วล็อกอิน
-                2. เลือก **Provider** และคลิกเลือก **Messaging API Channel** ของร้านคุณ
-                3. ไปที่เมนูแท็บ **Messaging API**
-                4. เลื่อนลงมาที่หัวข้อ **Webhook settings** กดปุ่ม **Edit** นำ **Webhook URL** ด้านบนไปวาง แล้วกด **Save**
-                5. กดเปิดสวิตช์ **Use webhook** ให้เป็นสีเขียว
-                """)
+    tenant_ref = db.collection("tenants").document(tenant_key)
+    tenant_snap = tenant_ref.get()
+    if not tenant_snap.exists:
+        # ไม่โยน error ที่มีรายละเอียด เพื่อไม่เปิดเผยว่า key ไหนมีอยู่จริง
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลร้านค้า")
+    tenant = tenant_snap.to_dict()
+
+    line_cfg = tenant.get("line_oa", {})
+    channel_secret = line_cfg.get("channel_secret", "")
+    channel_token = line_cfg.get("channel_access_token", "")
+
+    if not channel_secret or not channel_token:
+        # ร้านนี้ยังไม่ได้ตั้งค่า LINE OA เพิกเฉยไป (อย่า error 500 ใส่ LINE)
+        return {"status": "ignored", "reason": "line_oa_not_configured"}
+
+    if not verify_line_signature(channel_secret, body_bytes, signature):
+        raise HTTPException(status_code=401, detail="Signature ไม่ถูกต้อง")
+
+    try:
+        body = json.loads(body_bytes)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    for event in body.get("events", []):
+        if event.get("type") != "message":
+            continue
+        message = event.get("message", {})
+        if message.get("type") != "image":
+            continue
+
+        reply_token = event.get("replyToken")
+        message_id = message.get("id")
+
+        content_resp = requests.get(
+            f"https://api-data.line.me/v2/bot/message/{message_id}/content",
+            headers={"Authorization": f"Bearer {channel_token}"},
+            timeout=30,
+        )
+        if content_resp.status_code != 200:
+            line_reply(channel_token, reply_token, "ไม่สามารถดึงรูปภาพได้ กรุณาลองส่งใหม่อีกครั้ง")
+            continue
+
+        try:
+            status_code, slipok_result = _call_slipok("slip.jpg", content_resp.content, "image/jpeg")
+        except HTTPException:
+            line_reply(channel_token, reply_token, "ระบบยังไม่พร้อมตรวจสอบสลิปในขณะนี้ กรุณาติดต่อผู้ดูแลระบบ")
+            continue
+        except Exception:
+            line_reply(channel_token, reply_token, "เกิดข้อผิดพลาดในการตรวจสอบสลิป กรุณาลองใหม่อีกครั้ง")
+            continue
+
+        if not (status_code == 200 and slipok_result.get("success")):
+            line_reply(channel_token, reply_token, f"❌ สลิปไม่ถูกต้อง: {slipok_result.get('message', 'ตรวจสอบไม่สำเร็จ')}")
+            continue
+
+        data = slipok_result.get("data", {})
+        log_data = _build_log_data(tenant_key, tenant.get("name", "N/A"), data, source="line_webhook")
+
+        ok, status, payload = redeem_slip_atomic(tenant_key, log_data)
+
+        if not ok:
+            line_reply(channel_token, reply_token, f"❌ {REASON_MESSAGES.get(status, 'ไม่สามารถตรวจสอบสลิปได้')}")
+            continue
+
+        amount = data.get("amount", 0)
+        reply_text = (
+            f"✅ ตรวจสอบสลิปสำเร็จ\n"
+            f"ยอดเงิน: {amount:,.2f} บาท\n"
+            f"ผู้โอน: {data.get('sender', {}).get('displayName', 'N/A')}\n"
+            f"เวลา: {data.get('transDate')} {data.get('transTime')}\n"
+            f"โควต้าคงเหลือ: {payload['remaining']} ครั้ง"
+        )
+        line_reply(channel_token, reply_token, reply_text)
+
+    return {"status": "ok"}
